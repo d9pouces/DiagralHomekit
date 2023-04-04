@@ -1,0 +1,68 @@
+name: Test {{ cookiecutter.github_username }}/{{ cookiecutter.project_slug }}
+on:
+  push:
+    branches:
+    - master
+jobs:
+  unittests:
+    name: Unittests Python {% raw %}${{ matrix.python-version }}{% endraw %}
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ['3.11']
+    services:
+      sql_database:
+        image: postgres:alpine
+        options: >-
+          --health-cmd pg_isready -U username -d database
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_DB: database
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: username
+        ports:
+        - 5432:5432
+      redis_database:
+        image: redis:alpine
+        env:
+          REDIS_PASSWORD: password
+        ports:
+        - 6379:6379
+        options: >-
+          --entrypoint redis-server --requirepass "password"
+          --health-cmd redis-cli ping
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      minio_storage:
+        image: minio/minio:latest
+        ports:
+        - 9001:9001
+        env:
+          MINIO_ACCESS_KEY: access-key
+          MINIO_SECRET_KEY: secret-key
+        options: >-
+          --health-cmd curl -f http://localhost:9000/minio/health/live
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://interdiode:interdiode@localhost:5432/interdiode_db
+      INTERDIODE_REDIS_DB: 1
+      INTERDIODE_REDIS_HOST: localhost
+      INTERDIODE_REDIS_PORT: 6379
+      INTERDIODE_HEADLESS_CHROME_PATH: ''
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: {% raw %}${{ matrix.python-version }}{% endraw %}
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+        check-latest: true
+    - run: python3 -m pip install -U pip pytest poetry
+    - run: poetry install
+    - run: pytest
