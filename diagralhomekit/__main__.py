@@ -11,10 +11,11 @@ import pathlib
 import signal
 import sys
 import urllib.parse
+from multiprocessing import Queue
 from multiprocessing.pool import ThreadPool
 
-import logging_loki
 import sentry_sdk
+from logging_loki import LokiQueueHandler, emitter
 
 # noinspection PyPackageRequirements
 from pyhap.accessory import Bridge
@@ -23,7 +24,6 @@ from pyhap.accessory import Bridge
 from pyhap.accessory_driver import AccessoryDriver
 
 from diagralhomekit.homekit_config import HomekitDiagralConfig
-from diagralhomekit.utils import capture_some_exception
 
 logger = logging.getLogger("diagralhomekit")
 
@@ -45,14 +45,21 @@ def main():
     )
     parser.add_argument("--sentry-dsn", default=default_sentry_dsn)
     parser.add_argument("--loki-url", default=default_loki_url)
-    parser.add_argument("--verbosity", default=verbosity, type=int)
+    parser.add_argument("-v", "--verbosity", default=verbosity, type=int)
     args = parser.parse_args()
     config_dir = args.config_dir
 
-    if args.sentry_dsn:
-        sentry_sdk.init(args.sentry_dsn)
+    handler = logging.StreamHandler(sys.stdout)
+    if args.verbosity == 0:
+        logger.setLevel(logging.WARNING)
+    elif args.verbosity == 1:
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
 
     if args.loki_url:
+        emitter.LokiEmitter.level_tag = "level"
         parsed_url = urllib.parse.urlparse(args.loki_url)
         url = f"{parsed_url.scheme}://{parsed_url.hostname}"
         if parsed_url.port:
@@ -60,29 +67,27 @@ def main():
         url += parsed_url.path
         if parsed_url.query:
             url += f"?{parsed_url.query}"
-        handler = logging_loki.LokiHandler(
+        handler = LokiQueueHandler(
+            Queue(-1),
             url=url,
             tags={"application": "diagralhomekit"},
             auth=(parsed_url.username or "", parsed_url.password or ""),
             version="1",
         )
         logger.addHandler(handler)
+        logger.debug("Loki configured.")
+
+    if args.sentry_dsn:
+        sentry_sdk.init(args.sentry_dsn)
+        logger.debug("Sentry DSN configured.")
+
     listen_port = args.port
 
-    run_daemons(config_dir, listen_port, verbose=args.verbosity)
+    run_daemons(config_dir, listen_port)
 
 
-def run_daemons(config_dir, listen_port, verbose: int = 0):
+def run_daemons(config_dir, listen_port):
     """launch all processes: Homekit and Diagral checker."""
-    handler = logging.StreamHandler(sys.stdout)
-    if verbose == 0:
-        logger.setLevel(logging.WARNING)
-    elif verbose == 1:
-        logger.setLevel(logging.INFO)
-    else:
-        logger.setLevel(logging.DEBUG)
-    logger.addHandler(handler)
-
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
 
