@@ -5,6 +5,7 @@
 # ##############################################################################
 """Use Homekit objects during the configuration load."""
 import asyncio
+import logging
 from typing import Dict
 
 # noinspection PyPackageRequirements
@@ -16,6 +17,8 @@ from diagralhomekit.diagral_config import (
     DiagralConfig,
 )
 from diagralhomekit.homekit import HomekitAlarm
+
+logger = logging.getLogger(__name__)
 
 
 class HomekitDiagralConfig(DiagralConfig):
@@ -35,9 +38,10 @@ class HomekitDiagralConfig(DiagralConfig):
 
     def run(self):
         """Launch all accessories."""
-        for account in self.accounts.values():
-            for accessory in account.accessories.values():
-                asyncio.run(accessory.run)
+        # for account in self.accounts.values():
+        #     for accessory in account.accessories.values():
+        #         asyncio.run(accessory.run)
+        print("hello")
         super().run()
 
 

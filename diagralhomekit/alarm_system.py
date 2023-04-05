@@ -4,7 +4,10 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Define a generic alarm system."""
+import logging
 from typing import Set
+
+logger = logging.getLogger(__name__)
 
 
 class AlarmSystem:
@@ -17,6 +20,17 @@ class AlarmSystem:
         self.is_triggered = False
         self.trigger_date = None
         self.status_fault = False
+
+    def extra_log_data(self, **kwargs):
+        """Extra data for logging events."""
+        return {
+            "tags": {
+                "identifier": str(self.identifier),
+                "name": self.name,
+                "type": "system",
+                **kwargs,
+            }
+        }
 
     @property
     def identifier(self) -> int:

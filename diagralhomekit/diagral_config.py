@@ -8,6 +8,7 @@ import configparser
 import datetime
 import email.header
 import imaplib
+import logging
 import pathlib
 import re
 import time
@@ -24,6 +25,8 @@ from diagralhomekit.utils import (
     capture_some_exception,
     sleep,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DiagralAlarmSystem(AlarmSystem):
@@ -72,7 +75,7 @@ class DiagralAlarmSystem(AlarmSystem):
     def create_new_session(self, count=0):
         """Create a new session."""
         if count >= self.account.config.max_request_tries:
-            raise ValueError("Unable to get alarm status")
+            raise ValueError("Unable to get alarm status; please try again later.")
         r = self.account.request(
             "/authenticate/connect",
             json_data={
@@ -93,12 +96,12 @@ class DiagralAlarmSystem(AlarmSystem):
             return self.ttm_session_id
         message = content["message"]
         if message == "transmitter.connection.badpincode":
-            raise ValueError("masterCode invalid. Please verify your configuration.")
+            raise ValueError("MasterCode invalid; please verify your configuration.")
         elif message == "transmitter.connection.sessionalreadyopen":
             last_ttm_session_id = self.get_last_ttm_session_id()
             self.disconnect_session(last_ttm_session_id)
             return self.create_new_session(count=count + 1)
-        raise ValueError("ttmSessionId is not in the response. Please retry later.")
+        raise ValueError("Unable to create session; please verify your configuration.")
 
     def disconnect_session(self, session: Optional[str] = None):
         """Disconnect the current session."""
@@ -132,7 +135,7 @@ class DiagralAlarmSystem(AlarmSystem):
     def update_status(self, count=0):
         """Update the internal status."""
         if count >= self.account.config.max_request_tries:
-            raise ValueError("Unable to get alarm status")
+            raise ValueError("Unable to get alarm status.")
         if not self.ttm_session_id:
             self.create_new_session()
             return
@@ -158,7 +161,7 @@ class DiagralAlarmSystem(AlarmSystem):
         if not groups:
             return self.deactivate_alarm()
         if count >= self.account.config.max_request_tries:
-            raise ValueError("Unable to get alarm status")
+            raise ValueError("Unable to send activation command.")
         if not self.ttm_session_id:
             self.create_new_session()
         if len(groups) == 4:
@@ -188,7 +191,7 @@ class DiagralAlarmSystem(AlarmSystem):
     def deactivate_alarm(self, count=0):
         """Deactivate the alarm."""
         if count >= self.account.config.max_request_tries:
-            raise ValueError("Unable to request alarm deactivation")
+            raise ValueError("Unable to request alarm deactivation.")
         if not self.ttm_session_id:
             self.create_new_session()
         r = self.account.request(
@@ -206,7 +209,7 @@ class DiagralAlarmSystem(AlarmSystem):
             return self.deactivate_alarm(count=count + 1)
         content = r.json()
         if content["commandStatus"] != "CMD_OK":
-            raise ValueError("Complete deactivation completed")
+            raise ValueError("Unable to complete deactivation.")
 
 
 class DiagralAccount:
@@ -233,6 +236,10 @@ class DiagralAccount:
     def __str__(self):
         """Return a string."""
         return f"DiagralAccount('{self.login})"
+
+    def extra_log_data(self, **kwargs):
+        """Extra data for logging events."""
+        return {"tags": {"identifier": self.login, "type": "account", **kwargs}}
 
     def get_alarm_system(self, system_id: int, **kwargs) -> AlarmSystem:
         """Get an alarm system identified by its id."""
@@ -308,6 +315,10 @@ class DiagralAccount:
                 if system_id not in self.alarm_systems:
                     continue
                 system = self.alarm_systems[system_id]
+                logger.debug(
+                    f"Initialize system data for {system.name}",
+                    extra=system.extra_log_data(),
+                )
                 system.role = system_data["role"]
                 system.internal_name = system_data["name"]
                 system.installation_complete = system_data["installationComplete"]
@@ -318,6 +329,10 @@ class DiagralAccount:
         max_document_size = 100000
         if not self.imap_login or not self.imap_hostname:
             return
+        logger.debug(
+            f"Connect to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+            extra=self.extra_log_data(action="imap"),
+        )
         cls = imaplib.IMAP4
         if self.imap_use_tls:
             cls = imaplib.IMAP4_SSL
@@ -361,8 +376,20 @@ class DiagralAccount:
                         continue
                     # noinspection PyUnresolvedReferences
                     message_text = data[0][1].decode()
+                    logger.debug(
+                        f"Fetch email from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                        extra=self.extra_log_data(action="imap", detail="found"),
+                    )
                     self.analyze_single_email(message_text)
+                logger.debug(
+                    f"Delete email {message_num} from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                    extra=self.extra_log_data(action="imap", detail="delete"),
+                )
                 imap_client.store(message_num, "+FLAGS", r"(\Deleted)")
+            logger.debug(
+                f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                extra=self.extra_log_data(action="imap", detail="apply"),
+            )
             imap_client.expunge()
 
     def analyze_single_email(self, content: str):
@@ -379,8 +406,18 @@ class DiagralAccount:
                 continue
             line = "".join(decode(x, y) for (x, y) in email.header.decode_header(line))
             break
+        logger.debug(
+            f"Found subject {line} in email to {self.imap_login}",
+            extra=self.extra_log_data(action="imap", detail="subject"),
+        )
+
         for system in self.alarm_systems.values():
             if line.endswith(system.internal_name + " : Alarme"):
+                logger.debug(
+                    f"Alarm triggered for {system.name}.",
+                    extra=self.extra_log_data(action="imap", detail="alarm"),
+                )
+                continue
                 system.is_triggered = True
                 system.trigger_date = datetime.datetime.now(tz=datetime.UTC)
 
@@ -389,8 +426,13 @@ class DiagralAccount:
         with self.request_lock:
             self.do_login()
             for system in self.alarm_systems.values():
-                system.create_new_session()
-                system.disconnect_session()
+                try:
+                    system.create_new_session()
+                    system.disconnect_session()
+                except Exception as e:
+                    logger.exception(e, extra=system.extra_log_data())
+                    capture_some_exception(e)
+                    time.sleep(5)
             self.do_logout()
             time.sleep(1)
 
@@ -452,17 +494,17 @@ class DiagralConfig:
             for kwarg, checker in self._account_requirements.items():
                 raw_value = parser.get(section, kwarg, fallback=None)
                 if raw_value is None:
-                    config_errors.append(
-                        f"Required option {kwarg} in section {section}."
-                    )
+                    msg = f"Required option {kwarg} in section {section}."
+                    config_errors.append(msg)
+                    logger.fatal(msg)
                     continue
                 elif raw_value is not None:
                     try:
                         kwargs[kwarg] = checker(raw_value)
                     except ValueError:
-                        config_errors.append(
-                            f"Invalid option {kwarg} in section {section}."
-                        )
+                        msg = f"Invalid option {kwarg} in section {section}."
+                        config_errors.append(msg)
+                        logger.fatal(msg)
                         continue
             login, password = kwargs.pop("login"), kwargs.pop("password")
             account = self.get_account(login, password)
@@ -473,26 +515,44 @@ class DiagralConfig:
                 if raw_value is not None:
                     setattr(account, attr, checker(raw_value))
 
-            account.get_alarm_system(**kwargs)
+            system = account.get_alarm_system(**kwargs)
+            logger.info(
+                f"Configuration for alarm system {system} added.",
+                extra=system.extra_log_data(),
+            )
         if config_errors:
             raise ValueError("\n".join(config_errors))
 
     def run(self):
         """Run all daemons."""
         for account in self.accounts.values():
+            logger.debug(
+                f"Initialize system data for {account.login}",
+                extra=account.extra_log_data(),
+            )
             account.do_login()
             account.initialize_systems()
             account.do_logout()
         while self.continue_loop:
             for account in self.accounts.values():
+                logger.debug(
+                    f"Update system data {account.login}",
+                    extra=account.extra_log_data(),
+                )
                 try:
                     account.update_all_systems()
                 except Exception as e:
+                    logger.exception(e, extra=account.extra_log_data())
                     capture_some_exception(e)
             for __ in range(self.diagral_multiplier):
                 for account in self.accounts.values():
+                    logger.debug(
+                        f"Check emails for system {account.login}",
+                        extra=account.extra_log_data(),
+                    )
                     try:
                         account.check_alarm_emails()
                     except Exception as e:
+                        logger.exception(e, extra=account.extra_log_data())
                         capture_some_exception(e)
                 time.sleep(self.update_interval_in_s)

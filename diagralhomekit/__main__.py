@@ -9,6 +9,7 @@ import logging
 import os
 import pathlib
 import signal
+import sys
 import urllib.parse
 from multiprocessing.pool import ThreadPool
 
@@ -34,6 +35,7 @@ def main():
     default_config_dir = os.environ.get("DIAGRAL_CONFIG", "/etc/diagralhomekit")
     default_sentry_dsn = os.environ.get("DIAGRAL_SENTRY_DSN")
     default_loki_url = os.environ.get("DIAGRAL_LOKI_URL")
+    verbosity = int(os.environ.get("DIAGRAL_VERBOSITY", 0))
     parser.add_argument("-p", "--port", type=int, default=default_port)
     parser.add_argument(
         "-C",
@@ -43,6 +45,7 @@ def main():
     )
     parser.add_argument("--sentry-dsn", default=default_sentry_dsn)
     parser.add_argument("--loki-url", default=default_loki_url)
+    parser.add_argument("--verbosity", default=verbosity, type=int)
     args = parser.parse_args()
     config_dir = args.config_dir
 
@@ -66,13 +69,23 @@ def main():
         logger.addHandler(handler)
     listen_port = args.port
 
-    run_daemons(config_dir, listen_port)
+    run_daemons(config_dir, listen_port, verbose=args.verbosity)
 
 
-def run_daemons(config_dir, listen_port):
+def run_daemons(config_dir, listen_port, verbose: int = 0):
     """launch all processes: Homekit and Diagral checker."""
+    handler = logging.StreamHandler(sys.stdout)
+    if verbose == 0:
+        logger.setLevel(logging.WARNING)
+    elif verbose == 1:
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
+
     thread_pool = ThreadPool(1)
     driver = AccessoryDriver(port=listen_port, persist_file=persist_file)
     bridge = Bridge(driver, "Diagral e-One")
@@ -83,11 +96,8 @@ def run_daemons(config_dir, listen_port):
         signal.signal(signal.SIGTERM, driver.signal_handler)
         thread_pool.apply_async(config.run)
         driver.start()
-    except ValueError as e:
-        print(e)
-        raise e
     except Exception as e:
-        capture_some_exception(e)
+        logger.exception(e)
         raise e
     config.continue_loop = False
 

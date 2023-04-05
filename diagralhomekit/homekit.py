@@ -4,6 +4,8 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Implements a generic Homekit accessory."""
+import logging
+
 # noinspection PyPackageRequirements
 from pyhap.accessory import Accessory
 
@@ -16,6 +18,8 @@ from pyhap.const import CATEGORY_ALARM_SYSTEM
 from diagralhomekit.alarm_system import AlarmSystem
 from diagralhomekit.utils import BASE_AID, capture_some_exception
 
+logger = logging.getLogger(__name__)
+
 
 class HomekitAlarm(Accessory):
     """Represent a generic Homekit alarm object."""
@@ -26,6 +30,13 @@ class HomekitAlarm(Accessory):
     STATE_DISARMED = 3
     STATE_ALARM_TRIGGERED = 4
     category = CATEGORY_ALARM_SYSTEM
+    state_texts = {
+        STATE_STAY_ARM: "stay arm",
+        STATE_AWAY_ARM: "away arm",
+        STATE_NIGHT_ARM: "night arm",
+        STATE_DISARMED: "disarmed",
+        STATE_ALARM_TRIGGERED: "alarm triggered",
+    }
 
     def __init__(self, system: AlarmSystem, driver: AccessoryDriver):
         """init function."""
@@ -79,12 +90,21 @@ class HomekitAlarm(Accessory):
                 | self.alarm_system.get_night_groups()
             )
         else:
+            state = self.STATE_DISARMED
             groups = set()
+        extra = self.alarm_system.extra_log_data(
+            state=self.state_texts[state], action="set"
+        )
+        logger.info(
+            f"State {self.state_texts[state]} required for {self.alarm_system.name}.",
+            extra=extra,
+        )
         self.alarm_target_state.set_value(state)
         self.required_target_state = state
         try:
             self.alarm_system.activate_groups(groups)
         except Exception as e:
+            logger.exception(e, extra=extra)
             capture_some_exception(e)
 
     @Accessory.run_at_interval(30)
@@ -96,32 +116,62 @@ class HomekitAlarm(Accessory):
         active_groups = self.alarm_system.get_active_groups()
 
         if self.alarm_system.is_triggered and active_groups:
-            self.alarm_current_state.set_value(self.STATE_ALARM_TRIGGERED)
-            self.sensor_occupancy_detected.set_value(True)
-            self.sensor_status_active.set_value(True)
-            self.alarm_alarm_type.set_value(1)
+            state = self.STATE_ALARM_TRIGGERED
+            extra = self.alarm_system.extra_log_data(
+                state=self.state_texts[state], action="changed"
+            )
+            logger.warning(
+                f"State {self.state_texts[state]} set for {self.alarm_system.name}.",
+                extra=extra,
+            )
             return
 
-        self.sensor_occupancy_detected.set_value(False)
-        self.alarm_alarm_type.set_value(0)
         stay_groups = self.alarm_system.get_stay_groups()
         night_groups = self.alarm_system.get_night_groups()
-        if active_groups.issuperset(stay_groups) and active_groups.issuperset(
+
+        log_level = logging.INFO
+        if self.alarm_system.is_triggered and active_groups:
+            state = self.STATE_ALARM_TRIGGERED
+            log_level = logging.WARNING
+        elif active_groups.issuperset(stay_groups) and active_groups.issuperset(
             night_groups
         ):
             state = self.STATE_AWAY_ARM
-            self.sensor_status_active.set_value(True)
         elif active_groups.issuperset(stay_groups):
             state = self.STATE_STAY_ARM
-            self.sensor_status_active.set_value(True)
         elif active_groups.issuperset(night_groups):
             state = self.STATE_NIGHT_ARM
-            self.sensor_status_active.set_value(True)
         else:
             state = self.STATE_DISARMED
-            self.sensor_status_active.set_value(False)
+
+        self.sensor_status_active.set_value(state != self.STATE_DISARMED)
+        self.sensor_occupancy_detected.set_value(state == self.STATE_ALARM_TRIGGERED)
+        self.alarm_alarm_type.set_value(1 if state == self.STATE_ALARM_TRIGGERED else 0)
+
+        if self.alarm_current_state.get_value() != state:
+            extra = self.alarm_system.extra_log_data(
+                state=self.state_texts[state], action="changed"
+            )
+            logger.log(
+                log_level,
+                f"State {self.state_texts[state]} set for {self.alarm_system.name}.",
+                extra=extra,
+            )
+        if (
+            self.alarm_target_state.get_value() != state
+            and state != self.STATE_ALARM_TRIGGERED
+        ):
+            if self.required_target_state is None:
+                # indicate an external change (through the native app)
+                self.alarm_target_state.set_value(state)
+            elif self.required_target_state == state:
+                extra = self.alarm_system.extra_log_data(
+                    state=self.state_texts[state], action="reached"
+                )
+                logger.info(
+                    f"State {self.state_texts[state]} reached by {self.alarm_system.name}.",
+                    extra=extra,
+                )
+                self.required_target_state = None
+
         self.alarm_current_state.set_value(state)
-        if self.required_target_state is None:
-            self.alarm_target_state.set_value(state)
-        elif self.required_target_state == state:
-            self.required_target_state = None
