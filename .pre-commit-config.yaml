@@ -67,7 +67,7 @@ repos:
   rev: 1.7.4
   hooks:
   - id: bandit
-    args: [-x, {{ cookiecutter.project_slug }}_tests]
+    args: [-x, diagralhomekit_tests]
 - repo: https://github.com/PyCQA/flake8
   rev: 6.0.0
   hooks:

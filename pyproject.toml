@@ -1,18 +1,20 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core"]
+
 [tool.poetry]
-name = "diagralhomekit"
-version = "0.1.0"
-description = "Apple HomeKit integration for Diagral alarm systems"
 authors = ["d9pouces <github@19pouces.net>"]
+description = "Apple HomeKit integration for Diagral alarm systems"
 license = "CeCILL-B"
+name = "diagralhomekit"
 readme = "README.md"
+version = "0.1.0"
 
 [tool.poetry.dependencies]
-python = "^3.9"
 HAP-python = "^4.6.0"
-sentry-sdk = "^1.18.0"
+base36 = "^0.1.1"
+pyqrcode = "^1.2.1"
+python = "^3.9"
+python-logging-loki = "^0.3.1"
 requests = "^2.28.2"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+sentry-sdk = "^1.18.0"
