@@ -66,11 +66,11 @@ class DiagralAlarmSystem(AlarmSystem):
 
     def get_stay_groups(self) -> Set[int]:
         """return the selected groups for stay configuration."""
-        return {1}
+        return {2}
 
     def get_night_groups(self) -> Set[int]:
         """return the selected groups for night configuration."""
-        return {2}
+        return {1}
 
     def create_new_session(self, count=0):
         """Create a new session."""
@@ -324,9 +324,8 @@ class DiagralAccount:
                 system.installation_complete = system_data["installationComplete"]
                 system.standalone = system_data["standalone"]
 
-    def check_alarm_emails(self):
+    def check_alarm_emails(self, check_count=10, check_interval_in_s=5):
         """Check for new emails."""
-        max_document_size = 100000
         if not self.imap_login or not self.imap_hostname:
             return
         logger.debug(
@@ -347,52 +346,62 @@ class DiagralAccount:
             typ, data = imap_client.select(mailbox=self.imap_directory, readonly=False)
             if typ != "OK":
                 raise ValueError(f"Invalid mailbox {self.imap_directory}")
-            typ, data = imap_client.search(None, "NOT DELETED")
-            if typ != "OK":
-                raise ValueError("Unable to perform an IMAP search for new messages.")
-            # noinspection PyUnresolvedReferences
-            for message_num in data[0].decode().split():
-                typ, data = imap_client.fetch(message_num, "(RFC822.SIZE)")
-                # noinspection PyUnresolvedReferences
-                id_size = data[0].decode()
-                matcher = re.match(r".+ \(RFC822.SIZE (\d+)\)$", id_size)
-                if not matcher or typ != "OK":
-                    print(f"Unable to fetch the size of message {message_num}")
-                    continue
-                message_size = int(matcher.group(1))
-                if message_size <= max_document_size:
-                    typ, data = imap_client.fetch(message_num, "(RFC822)")
-                    if typ != "OK":
-                        # noinspection PyUnresolvedReferences
-                        print(
-                            "unable to fetch message %s (%s)"
-                            % (
-                                message_num,
-                                data[0].decode()
-                                if data and data[0]
-                                else "unknown error",
-                            )
-                        )
-                        continue
-                    # noinspection PyUnresolvedReferences
-                    message_text = data[0][1].decode()
-                    logger.debug(
-                        f"Fetch email from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-                        extra=self.extra_log_data(action="imap", detail="found"),
-                    )
-                    self.analyze_single_email(message_text)
+            to_expunge = False
+            for __ in range(check_count):
+                to_expunge = self._perform_imap_search(imap_client) or to_expunge
+                time.sleep(check_interval_in_s)
+            if to_expunge:
                 logger.debug(
-                    f"Delete email {message_num} from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-                    extra=self.extra_log_data(action="imap", detail="delete"),
+                    f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                    extra=self.extra_log_data(action="imap", detail="apply"),
                 )
-                imap_client.store(message_num, "+FLAGS", r"(\Deleted)")
-            logger.debug(
-                f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-                extra=self.extra_log_data(action="imap", detail="apply"),
-            )
-            imap_client.expunge()
+                imap_client.expunge()
 
-    def analyze_single_email(self, content: str):
+    def _perform_imap_search(self, imap_client):
+        """Perform an IMAP search to check for alarm emails."""
+        typ, data = imap_client.search(None, "NOT DELETED")
+        if typ != "OK":
+            raise ValueError("Unable to perform an IMAP search for new messages.")
+        max_document_size = 100000
+        to_expunge = False
+        # noinspection PyUnresolvedReferences
+        for message_num in data[0].decode().split():
+            typ, data = imap_client.fetch(message_num, "(RFC822.SIZE)")
+            # noinspection PyUnresolvedReferences
+            id_size = data[0].decode()
+            matcher = re.match(r".+ \(RFC822.SIZE (\d+)\)$", id_size)
+            if not matcher or typ != "OK":
+                print(f"Unable to fetch the size of message {message_num}")
+                continue
+            message_size = int(matcher.group(1))
+            if message_size <= max_document_size:
+                typ, data = imap_client.fetch(message_num, "(RFC822)")
+                if typ != "OK":
+                    # noinspection PyUnresolvedReferences
+                    print(
+                        "unable to fetch message %s (%s)"
+                        % (
+                            message_num,
+                            data[0].decode() if data and data[0] else "unknown error",
+                        )
+                    )
+                    continue
+                # noinspection PyUnresolvedReferences
+                message_text = data[0][1].decode()
+                logger.debug(
+                    f"Fetch email from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                    extra=self.extra_log_data(action="imap", detail="found"),
+                )
+                self._analyze_single_email(message_text)
+            logger.debug(
+                f"Delete email {message_num} from {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                extra=self.extra_log_data(action="imap", detail="delete"),
+            )
+            imap_client.store(message_num, "+FLAGS", r"(\Deleted)")
+            to_expunge = True
+        return to_expunge
+
+    def _analyze_single_email(self, content: str):
         """Look for emails to check if an alarm is set."""
         line = ""
 
@@ -417,7 +426,6 @@ class DiagralAccount:
                     f"Alarm triggered for {system.name}.",
                     extra=self.extra_log_data(action="imap", detail="alarm"),
                 )
-                continue
                 system.is_triggered = True
                 system.trigger_date = datetime.datetime.now(tz=datetime.UTC)
 
@@ -472,8 +480,8 @@ class DiagralConfig:
         """init function."""
         self.accounts: [Tuple[str, str], DiagralAccount] = {}
         self.continue_loop = True
-        self.update_interval_in_s = 30
-        self.diagral_multiplier = 5
+        self.update_interval_in_s = 10
+        self.diagral_multiplier = 3
 
     def get_account(self, login: str, password: str) -> DiagralAccount:
         """Get an account identified by the login and the password."""
@@ -551,7 +559,9 @@ class DiagralConfig:
                         extra=account.extra_log_data(),
                     )
                     try:
-                        account.check_alarm_emails()
+                        account.check_alarm_emails(
+                            check_count=10, check_interval_in_s=10
+                        )
                     except Exception as e:
                         logger.exception(e, extra=account.extra_log_data())
                         capture_some_exception(e)

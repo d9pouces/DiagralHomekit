@@ -114,18 +114,6 @@ class HomekitAlarm(Accessory):
         self.sensor_status_fault.set_value(fault)
         self.alarm_status_fault.set_value(fault)
         active_groups = self.alarm_system.get_active_groups()
-
-        if self.alarm_system.is_triggered and active_groups:
-            state = self.STATE_ALARM_TRIGGERED
-            extra = self.alarm_system.extra_log_data(
-                state=self.state_texts[state], action="changed"
-            )
-            logger.warning(
-                f"State {self.state_texts[state]} set for {self.alarm_system.name}.",
-                extra=extra,
-            )
-            return
-
         stay_groups = self.alarm_system.get_stay_groups()
         night_groups = self.alarm_system.get_night_groups()
 

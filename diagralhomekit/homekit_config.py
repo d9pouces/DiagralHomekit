@@ -36,14 +36,6 @@ class HomekitDiagralConfig(DiagralConfig):
             self.accounts[key] = HomekitDiagralAccount(self, login, password)
         return self.accounts[key]
 
-    def run(self):
-        """Launch all accessories."""
-        # for account in self.accounts.values():
-        #     for accessory in account.accessories.values():
-        #         asyncio.run(accessory.run)
-        print("hello")
-        super().run()
-
 
 class HomekitDiagralAccount(DiagralAccount):
     """Diagral account for Homekit accessories."""
