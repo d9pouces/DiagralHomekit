@@ -9,6 +9,7 @@ import logging
 import pathlib
 import re
 
+from diagralhomekit.http_plugin import HttpMonitoringPlugin
 from diagralhomekit.plex import PlexHomekitPlugin
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,11 @@ class HomekitConfig:
         from diagralhomekit.diagral import DiagralHomekitPlugin
 
         self.log_requests = False
-        self.plugins = [DiagralHomekitPlugin(self), PlexHomekitPlugin(self)]
+        self.plugins = [
+            DiagralHomekitPlugin(self),
+            PlexHomekitPlugin(self),
+            HttpMonitoringPlugin(self),
+        ]
 
     def load_config(self, config_file: pathlib.Path):
         """Load the configuration."""

@@ -21,11 +21,11 @@ class HomekitPlugin:
 
     def run_all(self):
         """Run all daemons in separate threads."""
-        raise NotImplementedError
+        pass
 
     def stop_all(self):
         """Stop all accounts."""
-        raise NotImplementedError
+        pass
 
     def load_accessories(self, bridge):
         """Add accessories to the Homekit bridge."""
