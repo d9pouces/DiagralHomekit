@@ -10,7 +10,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11']
-    env:
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
