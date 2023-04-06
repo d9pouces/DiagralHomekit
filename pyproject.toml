@@ -13,6 +13,8 @@ version = "0.9.1"
 [tool.poetry.dependencies]
 HAP-python = "^4.6.0"
 base36 = "^0.1.1"
+meteofrance-api = "^1.2.0"
+nut2 = "^2.1.1"
 pyqrcode = "^1.2.1"
 python = "^3.9"
 python-logging-loki = "^0.3.1"
