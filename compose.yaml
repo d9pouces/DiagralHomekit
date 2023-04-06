@@ -1,6 +1,9 @@
 services:
   diagral_homekit:
-    image: d9pouces/diagralhomekit:latest
+    # image: d9pouces/diagralhomekit:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
     - ./config:/etc/diagralhomekit
     restart: always
@@ -12,3 +15,4 @@ services:
     - DIAGRAL_VERBOSITY=1
     ports:
     - 51826:51826
+    - 5353:5353/udp

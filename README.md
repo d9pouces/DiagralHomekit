@@ -9,7 +9,7 @@ Allow to control your Diagral alarm systems through Apple Homekit.
 First, you need to create a configuration file `~/.diagralhomekit/config.ini` with connection details for all Diagral systems.
 
 ```ini
-[system:Home]
+[diagral:Home]
 name=[an explicit name for this system]
 login=[email address of the Diagral account]
 password=[password for the Diagral account]
@@ -51,22 +51,5 @@ DIAGRAL_LOKI_URL=https://username:password@my.loki.server/loki/api/v1/push
 DIAGRAL_VERBOSITY=1
 ```
 
-You can also run it with `docker-compose` with the following `compose.yaml` file:
-```yaml
-services:
-  diagral_homekit:
-    image: d9pouces/diagralhomekit:latest
-    volumes:
-    - ./config:/etc/diagralhomekit
-    restart: always
-    environment:
-    - DIAGRAL_PORT=51826
-    - DIAGRAL_CONFIG=/etc/diagralhomekit
-    - DIAGRAL_SENTRY_DSN=
-    - DIAGRAL_LOKI_URL=
-    - DIAGRAL_VERBOSITY=1
-    ports:
-    - 51826:51826
-```
 
 **As many sensitive data must be stored in this configuration file, so you should create a dedicated email address and Diagral account.**

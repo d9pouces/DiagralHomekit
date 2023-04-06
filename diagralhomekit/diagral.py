@@ -1,6 +1,6 @@
 # ##############################################################################
 #  Copyright (c) Matthieu Gallet <github@19pouces.net> 2023.                   #
-#  This file diagral_config.py is part of DiagralHomekit.                      #
+#  This file diagral.py is part of DiagralHomekit.                      #
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """A Diagral config."""
@@ -10,7 +10,6 @@ import email.header
 import imaplib
 import io
 import logging
-import pathlib
 import re
 import time
 from multiprocessing.pool import ThreadPool
@@ -21,6 +20,9 @@ import requests
 from sentry_sdk import capture_exception
 
 from diagralhomekit.alarm_system import AlarmSystem
+from diagralhomekit.config import HomekitConfig
+from diagralhomekit.homekit import HomekitAlarm
+from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import (
     RegexValidator,
     bool_validator,
@@ -265,7 +267,7 @@ class DiagralAccount:
 
     def __init__(self, config, login: str, password: str):
         """init function."""
-        self.config: DiagralConfig = config
+        self.config: HomekitConfig = config
         self.login = login
         self.password = password
         self.alarm_systems: Dict[int, DiagralAlarmSystem] = {}
@@ -291,35 +293,7 @@ class DiagralAccount:
         """Extra data for logging events."""
         return {"tags": {"identifier": self.login, "type": "account", **kwargs}}
 
-    @classmethod
-    def show_basic_config(cls, login, password):
-        """Display a basic configuration."""
-        parser = configparser.RawConfigParser()
-        config = DiagralConfig()
-        account = cls(config, login, password)
-        account.do_login()
-        systems = account.initialize_systems()
-        for system_data in systems:
-            name = slugify(system_data["name"])
-            section = f"system:{name}"
-            parser.add_section(section)
-            system_config = account.get_system_configuration(system_data["id"])
-            data = {k: "" for k in config.account_requirements}
-            data |= {k: "" for k in config.imap_requirements}
-            data["login"] = login
-            data["password"] = password
-            data["name"] = system_data["name"]
-            data["login"] = login
-            data["system_id"] = str(system_data["id"])
-            data["transmitter_id"] = system_config["transmitterId"]
-            data["central_id"] = system_config["centralId"]
-            parser[section] = data
-        fd = io.StringIO()
-        parser.write(fd)
-        account.do_logout()
-        return fd.getvalue()
-
-    def get_system_configuration(self, system_id: int, count=0):
+    def get_system_configuration(self, system_id: int):
         """Return complete configuration for a given system."""
         r = self.request(
             "/configuration/getConfiguration",
@@ -591,10 +565,10 @@ class DiagralAccount:
             self.sleep_while_run(check_interval_in_s)
 
 
-class DiagralConfig:
-    """Diagral configuration, with multiple accounts."""
+class DiagralHomekitPlugin(HomekitPlugin):
+    """Specific plugin for Diagral alarms."""
 
-    max_request_tries = 3
+    config_prefix = "diagral"
     account_requirements = {
         "login": RegexValidator(r".*@.*\..*"),
         "password": str,
@@ -612,43 +586,40 @@ class DiagralConfig:
         "imap_use_tls": bool_validator,
     }
 
-    def __init__(self):
+    def __init__(self, config):
         """init function."""
-        self.accounts: [Tuple[str, str], DiagralAccount] = {}
+        super().__init__(config)
+        self.diagral_accounts: [Tuple[str, str], DiagralAccount] = {}
         self.thread_pool = None
-        self.log_requests = False
 
     def get_account(self, login: str, password: str) -> DiagralAccount:
         """Get an account identified by the login and the password."""
         key = (login, password)
-        if key not in self.accounts:
-            self.accounts[key] = DiagralAccount(self, login, password)
-        return self.accounts[key]
+        if key not in self.diagral_accounts:
+            self.diagral_accounts[key] = DiagralAccount(self.config, login, password)
+        return self.diagral_accounts[key]
 
-    def load_config(self, config_file: pathlib.Path):
-        """Load the configuration."""
-        parser = configparser.ConfigParser()
-        parser.read(config_file)
+    def load_config(self, parser, section):
+        """Load a configuration section."""
+        logger.debug(f"loading {section}")
         config_errors = []
-        for section in parser.sections():
-            if not re.match(r"system:.*", section):
+        kwargs = {}
+        for kwarg, checker in self.account_requirements.items():
+            raw_value = parser.get(section, kwarg, fallback=None)
+            if raw_value is None:
+                msg = f"Required option {kwarg} in section {section}."
+                config_errors.append(msg)
+                logger.fatal(msg)
                 continue
-            kwargs = {}
-            for kwarg, checker in self.account_requirements.items():
-                raw_value = parser.get(section, kwarg, fallback=None)
-                if raw_value is None:
-                    msg = f"Required option {kwarg} in section {section}."
+            elif raw_value is not None:
+                try:
+                    kwargs[kwarg] = checker(raw_value)
+                except ValueError:
+                    msg = f"Invalid option {kwarg} in section {section}."
                     config_errors.append(msg)
                     logger.fatal(msg)
                     continue
-                elif raw_value is not None:
-                    try:
-                        kwargs[kwarg] = checker(raw_value)
-                    except ValueError:
-                        msg = f"Invalid option {kwarg} in section {section}."
-                        config_errors.append(msg)
-                        logger.fatal(msg)
-                        continue
+        if not config_errors:
             login, password = kwargs.pop("login"), kwargs.pop("password")
             account = self.get_account(login, password)
 
@@ -663,16 +634,51 @@ class DiagralConfig:
                 f"Configuration for alarm system {system} added.",
                 extra=system.extra_log_data(),
             )
-        if config_errors:
-            raise ValueError("\n".join(config_errors))
+        return config_errors
+
+    def load_accessories(self, bridge):
+        """Add accessories to the Homekit bridge."""
+        for account in self.diagral_accounts.values():
+            for system in account.alarm_systems.values():
+                accessory = HomekitAlarm(system, bridge.driver)
+                bridge.add_accessory(accessory)
 
     def run_all(self):
         """Run all daemons in separate threads."""
-        self.thread_pool = ThreadPool(1)
-        for account in self.accounts.values():
-            self.thread_pool.apply_async(account.run)
+        if self.diagral_accounts:
+            self.thread_pool = ThreadPool(len(self.diagral_accounts))
+            for account in self.diagral_accounts.values():
+                self.thread_pool.apply_async(account.run)
 
     def stop_all(self):
         """Stop all accounts."""
-        for account in self.accounts.values():
+        for account in self.diagral_accounts.values():
             account.is_running = False
+
+    @classmethod
+    def show_basic_config(cls, login, password):
+        """Display a basic configuration."""
+        parser = configparser.RawConfigParser()
+        config = HomekitConfig()
+        account = DiagralAccount(config, login, password)
+        account.do_login()
+        systems = account.initialize_systems()
+        for system_data in systems:
+            name = slugify(system_data["name"])
+            section = f"diagral:{name}"
+            parser.add_section(section)
+            system_config = account.get_system_configuration(system_data["id"])
+            data = {k: "" for k in cls.account_requirements}
+            data |= {k: "" for k in cls.imap_requirements}
+            data["login"] = login
+            data["password"] = password
+            data["name"] = system_data["name"]
+            data["login"] = login
+            data["system_id"] = str(system_data["id"])
+            data["transmitter_id"] = system_config["transmitterId"]
+            data["central_id"] = system_config["centralId"]
+            parser[section] = data
+        fd = io.StringIO()
+        parser.write(fd)
+        account.do_logout()
+        return fd.getvalue()

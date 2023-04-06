@@ -9,7 +9,7 @@ from unittest.mock import patch
 from diagralhomekit.diagral_config import (
     DiagralAccount,
     DiagralAlarmSystem,
-    DiagralConfig,
+    HomekitConfig,
 )
 from diagralhomekit_tests.constants import request_mock
 
@@ -17,7 +17,7 @@ from diagralhomekit_tests.constants import request_mock
 @patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
 def test_login():
     """Test the login."""
-    config = DiagralConfig()
+    config = HomekitConfig()
     account = DiagralAccount(config, "diagral@example.com", "wrong")
     assert not account.do_login()
     account = DiagralAccount(config, "diagral@example.com", "p4ssw0rD")
@@ -28,7 +28,7 @@ def test_login():
 @patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
 def test_initialize_systems():
     """Test the initialize_systems function."""
-    config = DiagralConfig()
+    config = HomekitConfig()
     account = DiagralAccount(config, "diagral@example.com", "p4ssw0rD")
     assert account.do_login()
     systems = account.initialize_systems()
@@ -39,7 +39,7 @@ def test_initialize_systems():
 @patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
 def test_get_central_status():
     """Test the get_central_status function."""
-    config = DiagralConfig()
+    config = HomekitConfig()
     account = DiagralAccount(config, "diagral@example.com", "p4ssw0rD")
     account.is_running = False
     assert account.do_login()

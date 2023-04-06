@@ -22,7 +22,8 @@ from pyhap.accessory import Bridge
 # noinspection PyPackageRequirements
 from pyhap.accessory_driver import AccessoryDriver
 
-from diagralhomekit.diagral_config import DiagralAccount, DiagralConfig
+from diagralhomekit.config import HomekitConfig
+from diagralhomekit.diagral import DiagralHomekitPlugin
 from diagralhomekit.homekit import HomekitAlarm
 
 logger = logging.getLogger("diagralhomekit")
@@ -35,6 +36,7 @@ def main():
     default_config_dir = os.environ.get("DIAGRAL_CONFIG", "/etc/diagralhomekit")
     default_sentry_dsn = os.environ.get("DIAGRAL_SENTRY_DSN")
     default_loki_url = os.environ.get("DIAGRAL_LOKI_URL")
+    default_address = os.environ.get("DIAGRAL_PUBLIC_ADDRESS")
     verbosity = int(os.environ.get("DIAGRAL_VERBOSITY", 0))
     parser.add_argument(
         "--create-config",
@@ -42,6 +44,7 @@ def main():
         default=None,
     )
     parser.add_argument("-p", "--port", type=int, default=default_port)
+    parser.add_argument("--advertised-address", type=str, default=default_address)
     parser.add_argument(
         "-C",
         "--config-dir",
@@ -58,7 +61,7 @@ def main():
         if sep != ":":
             print("Usage: --create-config=login:password")
             return
-        content = DiagralAccount.show_basic_config(login, password)
+        content = DiagralHomekitPlugin.show_basic_config(login, password)
         print(f"cat << EOF > {config_dir}/config.ini")
         print(content)
         print("EOF")
@@ -72,6 +75,7 @@ def main():
     else:
         logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
+    listen_port = args.port
 
     if args.loki_url:
         emitter.LokiEmitter.level_tag = "level"
@@ -96,26 +100,35 @@ def main():
         sentry_sdk.init(args.sentry_dsn)
         logger.debug("Sentry DSN configured.")
 
-    listen_port = args.port
+    run_daemons(
+        config_dir,
+        listen_port,
+        advertised_address=default_address,
+        log_requests=args.verbosity >= 3,
+    )
 
-    run_daemons(config_dir, listen_port, log_requests=args.verbosity >= 3)
 
-
-def run_daemons(config_dir, listen_port, log_requests: bool = False):
+def run_daemons(
+    config_dir, listen_port, advertised_address: str = None, log_requests: bool = False
+):
     """launch all processes: Homekit and Diagral checker."""
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
+    logger.info(f"configuration file: {config_file}")
+    logger.info(f"persistence file: {persist_file}")
+    logger.info(f"listen port: {listen_port}")
 
-    driver = AccessoryDriver(port=listen_port, persist_file=persist_file)
+    driver = AccessoryDriver(
+        port=listen_port,
+        advertised_address=advertised_address,
+        persist_file=persist_file,
+    )
     bridge = Bridge(driver, "Diagral e-One")
-    config = DiagralConfig()
+    config = HomekitConfig()
     config.log_requests = log_requests
     try:
         config.load_config(config_file)
-        for account in config.accounts.values():
-            for system in account.alarm_systems.values():
-                accessory = HomekitAlarm(system, bridge.driver)
-                bridge.add_accessory(accessory)
+        config.load_accessories(bridge)
         driver.add_accessory(accessory=bridge)
         signal.signal(signal.SIGTERM, driver.signal_handler)
         config.run_all()
