@@ -1,6 +1,6 @@
 # ##############################################################################
 #  Copyright (c) Matthieu Gallet <github@19pouces.net> 2023.                   #
-#  This file homekit.py is part of DiagralHomekit.                             #
+#  This file homekit_alarm.py is part of DiagralHomekit.                       #
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Implements a generic Homekit accessory."""

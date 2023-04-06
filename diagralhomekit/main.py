@@ -24,7 +24,7 @@ from pyhap.accessory_driver import AccessoryDriver
 
 from diagralhomekit.config import HomekitConfig
 from diagralhomekit.diagral import DiagralHomekitPlugin
-from diagralhomekit.homekit import HomekitAlarm
+from diagralhomekit.homekit_alarm import HomekitAlarm
 
 logger = logging.getLogger("diagralhomekit")
 

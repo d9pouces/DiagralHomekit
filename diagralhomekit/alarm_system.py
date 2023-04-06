@@ -27,7 +27,7 @@ class AlarmSystem:
             "tags": {
                 "identifier": str(self.identifier),
                 "name": self.name,
-                "type": "system",
+                "type": "alarm",
                 **kwargs,
             }
         }

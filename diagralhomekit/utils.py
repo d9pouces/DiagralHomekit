@@ -6,6 +6,7 @@
 """Some utility functions."""
 import re
 import unicodedata
+from typing import Optional
 
 from requests.exceptions import ConnectionError, ConnectTimeout, SSLError
 from sentry_sdk import capture_exception
@@ -31,6 +32,12 @@ def slugify(value: str) -> str:
     )
     value = re.sub(r"[^\w\s-]", "", value.lower())
     return re.sub(r"[-_\s]+", "_", value).strip("-_")
+
+
+def str_or_none(value: str) -> Optional[str]:
+    """Return None if the value is empty, the value otherwise."""
+    value = value.strip()
+    return value or None
 
 
 def capture_some_exception(e):

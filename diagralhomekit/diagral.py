@@ -1,6 +1,6 @@
 # ##############################################################################
 #  Copyright (c) Matthieu Gallet <github@19pouces.net> 2023.                   #
-#  This file diagral.py is part of DiagralHomekit.                      #
+#  This file diagral.py is part of DiagralHomekit.                             #
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """A Diagral config."""
@@ -21,7 +21,7 @@ from sentry_sdk import capture_exception
 
 from diagralhomekit.alarm_system import AlarmSystem
 from diagralhomekit.config import HomekitConfig
-from diagralhomekit.homekit import HomekitAlarm
+from diagralhomekit.homekit_alarm import HomekitAlarm
 from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import (
     RegexValidator,
@@ -291,7 +291,13 @@ class DiagralAccount:
 
     def extra_log_data(self, **kwargs):
         """Extra data for logging events."""
-        return {"tags": {"identifier": self.login, "type": "account", **kwargs}}
+        return {
+            "tags": {
+                "identifier": self.login,
+                **kwargs,
+                "type": "diagral",
+            }
+        }
 
     def get_system_configuration(self, system_id: int):
         """Return complete configuration for a given system."""
@@ -596,7 +602,7 @@ class DiagralHomekitPlugin(HomekitPlugin):
         """Get an account identified by the login and the password."""
         key = (login, password)
         if key not in self.diagral_accounts:
-            self.diagral_accounts[key] = DiagralAccount(self.config, login, password)
+            self.diagral_accounts[key] = DiagralAccount(self.config, *key)
         return self.diagral_accounts[key]
 
     def load_config(self, parser, section):
@@ -620,8 +626,8 @@ class DiagralHomekitPlugin(HomekitPlugin):
                     logger.fatal(msg)
                     continue
         if not config_errors:
-            login, password = kwargs.pop("login"), kwargs.pop("password")
-            account = self.get_account(login, password)
+            key = kwargs.pop("login"), kwargs.pop("password")
+            account = self.get_account(*key)
 
             # allow to connect to IMAP accounts for fetching alarm emails
             for attr, checker in self.imap_requirements.items():
