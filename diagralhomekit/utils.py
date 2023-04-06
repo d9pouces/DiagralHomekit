@@ -5,7 +5,7 @@
 # ##############################################################################
 """Some utility functions."""
 import re
-import time
+import unicodedata
 
 from requests.exceptions import ConnectionError, ConnectTimeout, SSLError
 from sentry_sdk import capture_exception
@@ -14,9 +14,23 @@ from urllib3.exceptions import NewConnectionError
 BASE_AID = 1_970_000_000_000
 
 
-def sleep():
-    """Sleep for a few seconds."""
-    time.sleep(5)
+def slugify(value: str) -> str:
+    """Remove special chars from strings.
+
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single underscores. Remove characters that aren't alphanumerics or
+    underscores. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+
+    >>> slugify('* alarm test')
+    'alarm_test'
+    """
+    value = str(value)
+    value = (
+        unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    )
+    value = re.sub(r"[^\w\s-]", "", value.lower())
+    return re.sub(r"[-_\s]+", "_", value).strip("-_")
 
 
 def capture_some_exception(e):

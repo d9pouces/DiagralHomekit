@@ -107,7 +107,7 @@ class HomekitAlarm(Accessory):
             logger.exception(e, extra=extra)
             capture_some_exception(e)
 
-    @Accessory.run_at_interval(30)
+    @Accessory.run_at_interval(10)
     def run(self):
         """Check if something has changed."""
         fault = 1 if self.alarm_system.status_fault else 0

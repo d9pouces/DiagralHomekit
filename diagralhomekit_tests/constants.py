@@ -12,7 +12,7 @@ from requests import Response
 RESPONSES: Dict[str, List[Dict]] = {}
 
 
-def request_mock(endpoint, json_data=None, method="POST"):
+def request_mock(mock, endpoint, json_data=None, method="POST"):
     """Mock requests to the official API."""
     if endpoint not in RESPONSES:
         raise ValueError(f"Unknown endpoint {endpoint}.")
@@ -106,10 +106,38 @@ register(
     {
         "masterCode": "8888",
         "transmitterId": "123456789ABCDE",
-        "systemId": 81838,
+        "systemId": 81839,
         "role": 0,
     },
     500,
+)
+register(
+    "/authenticate/connect",
+    {
+        "message": None,
+        "ttmSessionId": "123456789abcdefdabb43a003094ea780",
+        "systemState": "group",
+        "groups": [1, 2, 3, 4],
+        "groupList": [],
+        "gprsConnection": None,
+        "status": "OK",
+        "versions": {
+            "box": "1.1.13",
+            "boxRadio": "11",
+            "plugKnx": "1.1.10",
+            "rawVersions": "V1.1.13",
+        },
+        "connectedUserType": "RESTRICTED",
+        "codeIndex": 3,
+        "userRightsConfiguration": None,
+    },
+    {
+        "masterCode": "8888",
+        "transmitterId": "123456789ABCDE",
+        "systemId": 81838,
+        "role": 0,
+    },
+    200,
 )
 register(
     "/configuration/getConfiguration",

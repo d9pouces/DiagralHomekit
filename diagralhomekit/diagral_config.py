@@ -8,10 +8,12 @@ import configparser
 import datetime
 import email.header
 import imaplib
+import io
 import logging
 import pathlib
 import re
 import time
+from multiprocessing.pool import ThreadPool
 from threading import Lock
 from typing import Dict, Optional, Set, Tuple
 
@@ -23,7 +25,7 @@ from diagralhomekit.utils import (
     RegexValidator,
     bool_validator,
     capture_some_exception,
-    sleep,
+    slugify,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,11 +99,57 @@ class DiagralAlarmSystem(AlarmSystem):
         message = content["message"]
         if message == "transmitter.connection.badpincode":
             raise ValueError("MasterCode invalid; please verify your configuration.")
+        elif message == "transmitter.connection.overlimit":
+            self.account.sleep_while_run(180)
+            return self.create_new_session(count=count + 1)
         elif message == "transmitter.connection.sessionalreadyopen":
             last_ttm_session_id = self.get_last_ttm_session_id()
             self.disconnect_session(last_ttm_session_id)
             return self.create_new_session(count=count + 1)
         raise ValueError("Unable to create session; please verify your configuration.")
+
+    def get_central_status(self, count=0):
+        """Return the status for all systems."""
+        if count >= self.account.config.max_request_tries:
+            raise ValueError("Unable to get alarm status.")
+        if not self.ttm_session_id:
+            self.create_new_session()
+        r = self.account.request(
+            "/configuration/getCentralStatusZone",
+            json_data={
+                "centralId": self.central_id,
+                "transmitterId": self.transmitter_id,
+                "systemId": self.system_id,
+                "ttmSessionId": self.ttm_session_id,
+            },
+        )
+        if r.status_code != 200:
+            self.account.sleep_while_run(10)
+            return self.get_central_status(count + 1)
+        return r.json()
+
+    def analyze_central_status(self, data):
+        """Analyze the result provided by get_central_status(), looking for faults."""
+        had_fault = self.status_fault
+        self.status_fault = False
+        for category, v in data.items():
+            if not category.endswith("Status"):
+                continue
+            if isinstance(v, dict):
+                v = [v]
+            for sub_data in v:
+                for alert_type, state in sub_data.items():
+                    if alert_type.endswith("Alert") and state and not had_fault:
+                        self.status_fault = True
+                        extra = self.extra_log_data(action="fault")
+                        msg = f"Set new {alert_type} in {category} for {self.name}."
+                        logger.warning(
+                            msg,
+                            extra=extra,
+                        )
+        if had_fault and not self.status_fault:
+            msg = f"Fault status cleared for {self.name}."
+            logger.warning(msg, extra=self.extra_log_data(action="fault"))
 
     def disconnect_session(self, session: Optional[str] = None):
         """Disconnect the current session."""
@@ -147,7 +195,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            sleep()
+            self.account.sleep_while_run(10)
             return self.update_status(count + 1)
         content = r.json()
         self.set_active_groups(set(content["groups"]))
@@ -181,7 +229,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            sleep()
+            self.account.sleep_while_run(10)
             return self.send_activation_command(groups=groups, count=count + 1)
         content = r.json()
         if content["commandStatus"] != "CMD_OK":
@@ -205,7 +253,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            sleep()
+            self.account.sleep_while_run(10)
             return self.deactivate_alarm(count=count + 1)
         content = r.json()
         if content["commandStatus"] != "CMD_OK":
@@ -217,7 +265,7 @@ class DiagralAccount:
 
     def __init__(self, config, login: str, password: str):
         """init function."""
-        self.config = config
+        self.config: DiagralConfig = config
         self.login = login
         self.password = password
         self.alarm_systems: Dict[int, DiagralAlarmSystem] = {}
@@ -232,6 +280,8 @@ class DiagralAccount:
         self.imap_directory = "INBOX"
 
         self.request_lock = Lock()
+        self.is_running = True
+        self.show_mockup_requests = False
 
     def __str__(self):
         """Return a string."""
@@ -241,7 +291,43 @@ class DiagralAccount:
         """Extra data for logging events."""
         return {"tags": {"identifier": self.login, "type": "account", **kwargs}}
 
-    def get_alarm_system(self, system_id: int, **kwargs) -> AlarmSystem:
+    @classmethod
+    def show_basic_config(cls, login, password):
+        """Display a basic configuration."""
+        parser = configparser.RawConfigParser()
+        config = DiagralConfig()
+        account = cls(config, login, password)
+        account.do_login()
+        systems = account.initialize_systems()
+        for system_data in systems:
+            name = slugify(system_data["name"])
+            section = f"system:{name}"
+            parser.add_section(section)
+            system_config = account.get_system_configuration(system_data["id"])
+            data = {k: "" for k in config.account_requirements}
+            data |= {k: "" for k in config.imap_requirements}
+            data["login"] = login
+            data["password"] = password
+            data["name"] = system_data["name"]
+            data["login"] = login
+            data["system_id"] = str(system_data["id"])
+            data["transmitter_id"] = system_config["transmitterId"]
+            data["central_id"] = system_config["centralId"]
+            parser[section] = data
+        fd = io.StringIO()
+        parser.write(fd)
+        account.do_logout()
+        return fd.getvalue()
+
+    def get_system_configuration(self, system_id: int, count=0):
+        """Return complete configuration for a given system."""
+        r = self.request(
+            "/configuration/getConfiguration",
+            json_data={"systemId": system_id, "role": 0},
+        )
+        return r.json()
+
+    def get_alarm_system(self, system_id: int, **kwargs) -> DiagralAlarmSystem:
         """Get an alarm system identified by its id."""
         if system_id not in self.alarm_systems:
             self.alarm_systems[system_id] = DiagralAlarmSystem(
@@ -249,7 +335,7 @@ class DiagralAccount:
             )
         return self.alarm_systems[system_id]
 
-    def request(self, endpoint, json_data=None, data=None, method="POST"):
+    def request(self, endpoint, json_data=None, method="POST"):
         """Perform a request."""
         headers = {
             "User-Agent": "eOne/1.12.1.2 CFNetwork/1333.0.4 Darwin/21.5.0"
@@ -270,14 +356,22 @@ class DiagralAccount:
         r = requests.request(
             method.lower(),
             url,
-            params=data,
             json=json_data,
             headers=headers,
             timeout=60,
         )
-        # print(f"=== {url} {r.status_code}===")
-        # if r.status_code != 500:
-        #     print(r.text)
+        if self.config.log_requests:
+            logger.debug(f"{url}: {r.status_code}")
+            if r.status_code != 500:
+                logger.debug(f"{r.text}")
+        if self.show_mockup_requests:
+            try:
+                json_out = r.json()
+            except requests.exceptions.JSONDecodeError:
+                json_out = None
+            print(
+                f"""register('{endpoint}', {json_out!r}, {json_data!r}, {r.status_code})"""
+            )
         return r
 
     def do_login(self):
@@ -295,6 +389,8 @@ class DiagralAccount:
     def do_logout(self):
         """Logout from the server."""
         r = self.request("/authenticate/logout", json_data={"systemId": "null"})
+        if r.status_code == 401:
+            return
         if r.status_code != 200:
             raise ValueError("Unable to request Logout.")
         content = r.json()
@@ -323,6 +419,7 @@ class DiagralAccount:
                 system.internal_name = system_data["name"]
                 system.installation_complete = system_data["installationComplete"]
                 system.standalone = system_data["standalone"]
+        return content["systems"]
 
     def check_alarm_emails(self, check_count=10, check_interval_in_s=5):
         """Check for new emails."""
@@ -330,11 +427,9 @@ class DiagralAccount:
             return
         logger.debug(
             f"Connect to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-            extra=self.extra_log_data(action="imap"),
+            extra=self.extra_log_data(action="imap", detail="connect"),
         )
-        cls = imaplib.IMAP4
-        if self.imap_use_tls:
-            cls = imaplib.IMAP4_SSL
+        cls = imaplib.IMAP4_SSL if self.imap_use_tls else imaplib.IMAP4
 
         with cls(self.imap_hostname, self.imap_port) as imap_client:
             if not self.imap_use_tls:
@@ -347,9 +442,11 @@ class DiagralAccount:
             if typ != "OK":
                 raise ValueError(f"Invalid mailbox {self.imap_directory}")
             to_expunge = False
-            for __ in range(check_count):
+            index = 0
+            while index < check_count and self.is_running:
                 to_expunge = self._perform_imap_search(imap_client) or to_expunge
-                time.sleep(check_interval_in_s)
+                self.sleep_while_run(check_interval_in_s)
+                index += 1
             if to_expunge:
                 logger.debug(
                     f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
@@ -357,8 +454,19 @@ class DiagralAccount:
                 )
                 imap_client.expunge()
 
+    def sleep_while_run(self, interval_in_s: int):
+        """Sleep for the given interval if active."""
+        for __ in range(interval_in_s * 10):
+            if not self.is_running:
+                return
+            time.sleep(0.1)
+
     def _perform_imap_search(self, imap_client):
         """Perform an IMAP search to check for alarm emails."""
+        logger.debug(
+            f"Search in {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+            extra=self.extra_log_data(action="imap", detail="search"),
+        )
         typ, data = imap_client.search(None, "NOT DELETED")
         if typ != "OK":
             raise ValueError("Unable to perform an IMAP search for new messages.")
@@ -371,19 +479,20 @@ class DiagralAccount:
             id_size = data[0].decode()
             matcher = re.match(r".+ \(RFC822.SIZE (\d+)\)$", id_size)
             if not matcher or typ != "OK":
-                print(f"Unable to fetch the size of message {message_num}")
+                logger.warning(
+                    f"unable to fetch the size of message {message_num}",
+                    extra=self.extra_log_data(action="imap", detail="found"),
+                )
                 continue
             message_size = int(matcher.group(1))
             if message_size <= max_document_size:
                 typ, data = imap_client.fetch(message_num, "(RFC822)")
                 if typ != "OK":
                     # noinspection PyUnresolvedReferences
-                    print(
-                        "unable to fetch message %s (%s)"
-                        % (
-                            message_num,
-                            data[0].decode() if data and data[0] else "unknown error",
-                        )
+                    text = data[0].decode() if data and data[0] else "unknown error"
+                    logger.warning(
+                        f"unable to fetch message {message_num} ({text})",
+                        extra=self.extra_log_data(action="imap", detail="found"),
                     )
                     continue
                 # noinspection PyUnresolvedReferences
@@ -436,13 +545,15 @@ class DiagralAccount:
             for system in self.alarm_systems.values():
                 try:
                     system.create_new_session()
+                    status = system.get_central_status()
+                    system.analyze_central_status(status)
                     system.disconnect_session()
                 except Exception as e:
                     logger.exception(e, extra=system.extra_log_data())
                     capture_some_exception(e)
-                    time.sleep(5)
+                    self.sleep_while_run(5)
             self.do_logout()
-            time.sleep(1)
+            self.sleep_while_run(1)
 
     def change_alarm_state(self, system: DiagralAlarmSystem, groups: Set[int]):
         """Change the alarm state."""
@@ -454,12 +565,37 @@ class DiagralAccount:
             self.do_logout()
             time.sleep(1)
 
+    def run(self):
+        """Continuously update the systems and looks for alarms."""
+        extra = self.extra_log_data()
+        logger.debug(f"Initialize system data for {self.login}", extra=extra)
+        self.do_login()
+        self.initialize_systems()
+        self.do_logout()
+        while self.is_running:
+            logger.debug(f"Update system data {self.login}", extra=extra)
+            try:
+                self.update_all_systems()
+            except Exception as e:
+                logger.exception(e, extra=extra)
+                capture_some_exception(e)
+            logger.debug(f"Check emails for system {self.login}", extra=extra)
+            check_interval_in_s = 10
+            try:
+                self.check_alarm_emails(
+                    check_count=20, check_interval_in_s=check_interval_in_s
+                )
+            except Exception as e:
+                logger.exception(e, extra=extra)
+                capture_some_exception(e)
+            self.sleep_while_run(check_interval_in_s)
+
 
 class DiagralConfig:
     """Diagral configuration, with multiple accounts."""
 
     max_request_tries = 3
-    _account_requirements = {
+    account_requirements = {
         "login": RegexValidator(r".*@.*\..*"),
         "password": str,
         "system_id": int,
@@ -468,7 +604,7 @@ class DiagralConfig:
         "master_code": int,
         "name": str,
     }
-    _imap_requirements = {
+    imap_requirements = {
         "imap_login": str,
         "imap_password": str,
         "imap_hostname": str,
@@ -479,9 +615,8 @@ class DiagralConfig:
     def __init__(self):
         """init function."""
         self.accounts: [Tuple[str, str], DiagralAccount] = {}
-        self.continue_loop = True
-        self.update_interval_in_s = 10
-        self.diagral_multiplier = 3
+        self.thread_pool = None
+        self.log_requests = False
 
     def get_account(self, login: str, password: str) -> DiagralAccount:
         """Get an account identified by the login and the password."""
@@ -499,7 +634,7 @@ class DiagralConfig:
             if not re.match(r"system:.*", section):
                 continue
             kwargs = {}
-            for kwarg, checker in self._account_requirements.items():
+            for kwarg, checker in self.account_requirements.items():
                 raw_value = parser.get(section, kwarg, fallback=None)
                 if raw_value is None:
                     msg = f"Required option {kwarg} in section {section}."
@@ -518,7 +653,7 @@ class DiagralConfig:
             account = self.get_account(login, password)
 
             # allow to connect to IMAP accounts for fetching alarm emails
-            for attr, checker in self._imap_requirements.items():
+            for attr, checker in self.imap_requirements.items():
                 raw_value = parser.get(section, attr, fallback=None)
                 if raw_value is not None:
                     setattr(account, attr, checker(raw_value))
@@ -531,38 +666,13 @@ class DiagralConfig:
         if config_errors:
             raise ValueError("\n".join(config_errors))
 
-    def run(self):
-        """Run all daemons."""
+    def run_all(self):
+        """Run all daemons in separate threads."""
+        self.thread_pool = ThreadPool(1)
         for account in self.accounts.values():
-            logger.debug(
-                f"Initialize system data for {account.login}",
-                extra=account.extra_log_data(),
-            )
-            account.do_login()
-            account.initialize_systems()
-            account.do_logout()
-        while self.continue_loop:
-            for account in self.accounts.values():
-                logger.debug(
-                    f"Update system data {account.login}",
-                    extra=account.extra_log_data(),
-                )
-                try:
-                    account.update_all_systems()
-                except Exception as e:
-                    logger.exception(e, extra=account.extra_log_data())
-                    capture_some_exception(e)
-            for __ in range(self.diagral_multiplier):
-                for account in self.accounts.values():
-                    logger.debug(
-                        f"Check emails for system {account.login}",
-                        extra=account.extra_log_data(),
-                    )
-                    try:
-                        account.check_alarm_emails(
-                            check_count=10, check_interval_in_s=10
-                        )
-                    except Exception as e:
-                        logger.exception(e, extra=account.extra_log_data())
-                        capture_some_exception(e)
-                time.sleep(self.update_interval_in_s)
+            self.thread_pool.apply_async(account.run)
+
+    def stop_all(self):
+        """Stop all accounts."""
+        for account in self.accounts.values():
+            account.is_running = False

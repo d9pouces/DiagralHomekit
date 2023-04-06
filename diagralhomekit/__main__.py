@@ -12,7 +12,6 @@ import signal
 import sys
 import urllib.parse
 from multiprocessing import Queue
-from multiprocessing.pool import ThreadPool
 
 import sentry_sdk
 from logging_loki import LokiQueueHandler, emitter
@@ -23,7 +22,8 @@ from pyhap.accessory import Bridge
 # noinspection PyPackageRequirements
 from pyhap.accessory_driver import AccessoryDriver
 
-from diagralhomekit.homekit_config import HomekitDiagralConfig
+from diagralhomekit.diagral_config import DiagralAccount, DiagralConfig
+from diagralhomekit.homekit import HomekitAlarm
 
 logger = logging.getLogger("diagralhomekit")
 
@@ -36,6 +36,11 @@ def main():
     default_sentry_dsn = os.environ.get("DIAGRAL_SENTRY_DSN")
     default_loki_url = os.environ.get("DIAGRAL_LOKI_URL")
     verbosity = int(os.environ.get("DIAGRAL_VERBOSITY", 0))
+    parser.add_argument(
+        "--create-config",
+        help="--create-config 'email:password' display a sample configuration file",
+        default=None,
+    )
     parser.add_argument("-p", "--port", type=int, default=default_port)
     parser.add_argument(
         "-C",
@@ -48,6 +53,16 @@ def main():
     parser.add_argument("-v", "--verbosity", default=verbosity, type=int)
     args = parser.parse_args()
     config_dir = args.config_dir
+    if args.create_config:
+        login, sep, password = args.create_config.partition(":")
+        if sep != ":":
+            print("Usage: --create-config=login:password")
+            return
+        content = DiagralAccount.show_basic_config(login, password)
+        print(f"cat << EOF > {config_dir}/config.ini")
+        print(content)
+        print("EOF")
+        return
 
     handler = logging.StreamHandler(sys.stdout)
     if args.verbosity == 0:
@@ -83,28 +98,32 @@ def main():
 
     listen_port = args.port
 
-    run_daemons(config_dir, listen_port)
+    run_daemons(config_dir, listen_port, log_requests=args.verbosity >= 3)
 
 
-def run_daemons(config_dir, listen_port):
+def run_daemons(config_dir, listen_port, log_requests: bool = False):
     """launch all processes: Homekit and Diagral checker."""
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
 
-    thread_pool = ThreadPool(1)
     driver = AccessoryDriver(port=listen_port, persist_file=persist_file)
     bridge = Bridge(driver, "Diagral e-One")
-    config = HomekitDiagralConfig(bridge)
+    config = DiagralConfig()
+    config.log_requests = log_requests
     try:
         config.load_config(config_file)
+        for account in config.accounts.values():
+            for system in account.alarm_systems.values():
+                accessory = HomekitAlarm(system, bridge.driver)
+                bridge.add_accessory(accessory)
         driver.add_accessory(accessory=bridge)
         signal.signal(signal.SIGTERM, driver.signal_handler)
-        thread_pool.apply_async(config.run)
+        config.run_all()
         driver.start()
     except Exception as e:
         logger.exception(e)
         raise e
-    config.continue_loop = False
+    config.stop_all()
 
 
 if __name__ == "__main__":
