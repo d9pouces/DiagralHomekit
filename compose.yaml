@@ -1,0 +1,14 @@
+services:
+  diagral_homekit:
+    image: d9pouces/diagralhomekit:latest
+    volumes:
+    - ./config:/etc/diagralhomekit
+    restart: always
+    environment:
+    - DIAGRAL_PORT=51826
+    - DIAGRAL_CONFIG=/etc/diagralhomekit
+    - DIAGRAL_SENTRY_DSN=
+    - DIAGRAL_LOKI_URL=
+    - DIAGRAL_VERBOSITY=1
+    ports:
+    - 51826:51826
