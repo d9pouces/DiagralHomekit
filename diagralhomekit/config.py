@@ -10,6 +10,7 @@ import pathlib
 import re
 
 from diagralhomekit.http_plugin import HttpMonitoringPlugin
+from diagralhomekit.meteofrance import MeteoFrancePlugin
 from diagralhomekit.plex import PlexHomekitPlugin
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class HomekitConfig:
             DiagralHomekitPlugin(self),
             PlexHomekitPlugin(self),
             HttpMonitoringPlugin(self),
+            MeteoFrancePlugin(self),
         ]
 
     def load_config(self, config_file: pathlib.Path):
