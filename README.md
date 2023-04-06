@@ -53,3 +53,58 @@ DIAGRAL_VERBOSITY=1
 
 
 **As many sensitive data must be stored in this configuration file, so you should create a dedicated email address and Diagral account.**
+
+
+Plex sensor
+-----------
+
+A presence can be detected when a specified Plex player is playing something:
+```ini
+[plex:appletv_web]
+server_token=[authentication token]
+server_url=[url of your Plex server]
+player_name=[Displayed name for the player]
+player_device=None,
+player_product=[Product name of the targeted player]
+player_title=[Title of the targeted player]
+player_address=[IP address of the targeted player]
+```
+Only one of the last four properties is required to match with the targeted player.
+To get actual property values, you can use `curl`:
+
+```bash
+curl -H Accept:application/json -H X-Plex-Token:[authentication token] [url of your Plex server]/status/sessions
+```
+
+HTTP monitoring
+---------------
+
+You can monitor some websites, as air purifier sensors (no Homekit sensor is available for HTTP monitoring…):
+```ini
+[internet:website]
+url=[url to check]
+name=[Displayed name]
+```
+
+Weather monitoring
+------------------
+
+You can monitor weather, and emulate a presence when it will rain in the next 10 minutes:
+
+```ini
+[meteofrance:paris]
+name=Paris
+latitude=48.866667
+longitude=2.333333
+country=FR
+region=Île-de-France
+```
+
+UPS monitoring
+--------------
+
+UPS can also be monitoring, as soon as NUT is locally installed (standard UPS monitoring server on Linux.
+```
+[ups:home]
+name=eaton650
+```

@@ -135,7 +135,7 @@ class MeteoFrancePlugin(HomekitPlugin):
         "latitude": float,
         "longitude": float,
         "country": str,
-        "admin": str,
+        "region": str,
     }
 
     def __init__(self, config):
@@ -166,7 +166,7 @@ class MeteoFrancePlugin(HomekitPlugin):
                     "lat": kwargs["latitude"],
                     "lon": kwargs["longitude"],
                     "country": kwargs["country"],
-                    "admin": kwargs["admin"],
+                    "admin": kwargs["region"],
                 }
             )
             location = MeteoFranceLocation(self, place)

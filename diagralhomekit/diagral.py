@@ -516,7 +516,7 @@ class DiagralAccount:
                     extra=self.extra_log_data(action="imap", detail="alarm"),
                 )
                 system.is_triggered = True
-                system.trigger_date = datetime.datetime.now(tz=datetime.UTC)
+                system.trigger_date = datetime.datetime.now(tz=datetime.timezone.utc)
 
     def update_all_systems(self):
         """Update all system with a few requests."""

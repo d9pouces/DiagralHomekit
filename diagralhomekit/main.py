@@ -24,7 +24,6 @@ from pyhap.accessory_driver import AccessoryDriver
 
 from diagralhomekit.config import HomekitConfig
 from diagralhomekit.diagral import DiagralHomekitPlugin
-from diagralhomekit.homekit_alarm import HomekitAlarm
 
 logger = logging.getLogger("diagralhomekit")
 
@@ -36,7 +35,6 @@ def main():
     default_config_dir = os.environ.get("DIAGRAL_CONFIG", "/etc/diagralhomekit")
     default_sentry_dsn = os.environ.get("DIAGRAL_SENTRY_DSN")
     default_loki_url = os.environ.get("DIAGRAL_LOKI_URL")
-    default_address = os.environ.get("DIAGRAL_PUBLIC_ADDRESS")
     verbosity = int(os.environ.get("DIAGRAL_VERBOSITY", 0))
     parser.add_argument(
         "--create-config",
@@ -44,7 +42,6 @@ def main():
         default=None,
     )
     parser.add_argument("-p", "--port", type=int, default=default_port)
-    parser.add_argument("--advertised-address", type=str, default=default_address)
     parser.add_argument(
         "-C",
         "--config-dir",
@@ -103,14 +100,11 @@ def main():
     run_daemons(
         config_dir,
         listen_port,
-        advertised_address=default_address,
         log_requests=args.verbosity >= 3,
     )
 
 
-def run_daemons(
-    config_dir, listen_port, advertised_address: str = None, log_requests: bool = False
-):
+def run_daemons(config_dir, listen_port, log_requests: bool = False):
     """launch all processes: Homekit and Diagral checker."""
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
@@ -120,7 +114,6 @@ def run_daemons(
 
     driver = AccessoryDriver(
         port=listen_port,
-        advertised_address=advertised_address,
         persist_file=persist_file,
     )
     bridge = Bridge(driver, "Diagral e-One")
