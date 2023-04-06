@@ -51,7 +51,7 @@ DIAGRAL_LOKI_URL=https://username:password@my.loki.server/loki/api/v1/push
 DIAGRAL_VERBOSITY=1
 ```
 
-You can also run it with `docker-compose`
+You can also run it with `docker-compose` with the following `compose.yaml` file:
 ```yaml
 services:
   diagral_homekit:
