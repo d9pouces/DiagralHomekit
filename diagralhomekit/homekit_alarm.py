@@ -157,8 +157,14 @@ class HomekitAlarm(Accessory):
             and state != self.STATE_ALARM_TRIGGERED
         ):
             if self.required_target_state is None:
-                # indicate an external change (through the native app)
-                self.alarm_target_state.set_value(state)
+                # an external change happened (through the native app)
+                extra = self.alarm_system.extra_log_data(
+                    state=self.state_texts[state], action="set"
+                )
+                logger.info(
+                    f"State {self.state_texts[state]} externally set at {self.alarm_system.name}.",
+                    extra=extra,
+                )
             elif self.required_target_state == state:
                 extra = self.alarm_system.extra_log_data(
                     state=self.state_texts[state], action="reached"
@@ -168,5 +174,6 @@ class HomekitAlarm(Accessory):
                     extra=extra,
                 )
                 self.required_target_state = None
+            self.alarm_target_state.set_value(state)
 
         self.alarm_current_state.set_value(state)

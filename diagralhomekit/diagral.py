@@ -547,6 +547,8 @@ class DiagralAccount:
 
     def change_alarm_state(self, system: DiagralAlarmSystem, groups: Set[int]):
         """Change the alarm state."""
+        extra = self.extra_log_data(action="alarm_state")
+        logger.info(f"Change alarm state of {system.name} to {groups}", extra=extra)
         with self.request_lock:
             self.do_login()
             system.create_new_session()
