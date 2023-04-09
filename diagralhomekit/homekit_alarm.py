@@ -5,6 +5,7 @@
 # ##############################################################################
 """Implements a generic Homekit accessory."""
 import logging
+from threading import Thread
 
 # noinspection PyPackageRequirements
 from pyhap.accessory import Accessory
@@ -101,8 +102,10 @@ class HomekitAlarm(Accessory):
         )
         self.alarm_target_state.set_value(state)
         self.required_target_state = state
+
         try:
-            self.alarm_system.activate_groups(groups)
+            thread = Thread(target=self.alarm_system.activate_groups, args=(groups,))
+            thread.start()
         except Exception as e:
             logger.exception(e, extra=extra)
             capture_some_exception(e)
