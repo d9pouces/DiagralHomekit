@@ -100,11 +100,11 @@ def main():
     run_daemons(
         config_dir,
         listen_port,
-        log_requests=args.verbosity >= 3,
+        verbosity=args.verbosity,
     )
 
 
-def run_daemons(config_dir, listen_port, log_requests: bool = False):
+def run_daemons(config_dir, listen_port, verbosity: int = 1):
     """launch all processes: Homekit and Diagral checker."""
     persist_file = config_dir / "persist.json"
     config_file = config_dir / "config.ini"
@@ -118,7 +118,7 @@ def run_daemons(config_dir, listen_port, log_requests: bool = False):
     )
     bridge = Bridge(driver, "Diagral e-One")
     config = HomekitConfig()
-    config.log_requests = log_requests
+    config.verbosity = verbosity
     try:
         config.load_config(config_file)
         config.load_accessories(bridge)

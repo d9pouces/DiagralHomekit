@@ -26,7 +26,7 @@ class HomekitConfig:
         """init function."""
         from diagralhomekit.diagral import DiagralHomekitPlugin
 
-        self.log_requests = False
+        self.verbosity = False
         self.plugins = [
             DiagralHomekitPlugin(self),
             PlexHomekitPlugin(self),

@@ -102,7 +102,7 @@ class DiagralAlarmSystem(AlarmSystem):
         if message == "transmitter.connection.badpincode":
             raise ValueError("MasterCode invalid; please verify your configuration.")
         elif message == "transmitter.connection.overlimit":
-            self.account.sleep_while_run(180)
+            self.account.sleep_while_run(180, log=True)
             return self.create_new_session(count=count + 1)
         elif message == "transmitter.connection.sessionalreadyopen":
             last_ttm_session_id = self.get_last_ttm_session_id()
@@ -126,7 +126,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            self.account.sleep_while_run(10)
+            self.account.sleep_while_run(10, log=True)
             return self.get_central_status(count + 1)
         return r.json()
 
@@ -197,7 +197,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            self.account.sleep_while_run(10)
+            self.account.sleep_while_run(10, log=True)
             return self.update_status(count + 1)
         content = r.json()
         self.set_active_groups(set(content["groups"]))
@@ -231,7 +231,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            self.account.sleep_while_run(10)
+            self.account.sleep_while_run(10, log=True)
             return self.send_activation_command(groups=groups, count=count + 1)
         content = r.json()
         if content["commandStatus"] != "CMD_OK":
@@ -255,7 +255,7 @@ class DiagralAlarmSystem(AlarmSystem):
             },
         )
         if r.status_code != 200:
-            self.account.sleep_while_run(10)
+            self.account.sleep_while_run(10, log=True)
             return self.deactivate_alarm(count=count + 1)
         content = r.json()
         if content["commandStatus"] != "CMD_OK":
@@ -340,10 +340,12 @@ class DiagralAccount:
             headers=headers,
             timeout=60,
         )
-        if self.config.log_requests:
-            logger.debug(f"{url}: {r.status_code}")
-            if r.status_code != 500:
-                logger.debug(f"{r.text}")
+        if self.config.verbosity >= 4:
+            logger.debug(
+                f"{url}: {r.status_code}", self.extra_log_data(action="api-request")
+            )
+            if r.status_code != 500 and self.config.verbosity >= 5:
+                logger.debug(f"{r.text}", self.extra_log_data(action="api-request"))
         if self.show_mockup_requests:
             try:
                 json_out = r.json()
@@ -428,14 +430,21 @@ class DiagralAccount:
                 self.sleep_while_run(check_interval_in_s)
                 index += 1
             if to_expunge:
-                logger.debug(
-                    f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-                    extra=self.extra_log_data(action="imap", detail="apply"),
-                )
+                if self.config.verbosity >= 4:
+                    logger.debug(
+                        f"Apply IMAP commands to {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                        extra=self.extra_log_data(action="imap", detail="apply"),
+                    )
                 imap_client.expunge()
 
-    def sleep_while_run(self, interval_in_s: int):
+    def sleep_while_run(self, interval_in_s: int, log: bool = False):
         """Sleep for the given interval if active."""
+        if log:
+            logger.info(
+                "Sleeping for %d seconds",
+                interval_in_s,
+                self.extra_log_data(action="sleep"),
+            )
         for __ in range(interval_in_s * 10):
             if not self.is_running:
                 return
@@ -443,10 +452,11 @@ class DiagralAccount:
 
     def _perform_imap_search(self, imap_client):
         """Perform an IMAP search to check for alarm emails."""
-        logger.debug(
-            f"Search in {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
-            extra=self.extra_log_data(action="imap", detail="search"),
-        )
+        if self.config.verbosity >= 4:
+            logger.debug(
+                f"Search in {self.imap_login}@{self.imap_hostname}:{self.imap_port}",
+                extra=self.extra_log_data(action="imap", detail="search"),
+            )
         typ, data = imap_client.search(None, "NOT DELETED")
         if typ != "OK":
             raise ValueError("Unable to perform an IMAP search for new messages.")
@@ -531,9 +541,9 @@ class DiagralAccount:
                 except Exception as e:
                     logger.exception(e, extra=system.extra_log_data())
                     capture_some_exception(e)
-                    self.sleep_while_run(5)
+                    self.sleep_while_run(5, log=True)
             self.do_logout()
-            self.sleep_while_run(1)
+        self.sleep_while_run(1)
 
     def change_alarm_state(self, system: DiagralAlarmSystem, groups: Set[int]):
         """Change the alarm state."""
@@ -543,7 +553,7 @@ class DiagralAccount:
             system.send_activation_command(groups)
             system.disconnect_session()
             self.do_logout()
-            time.sleep(1)
+        time.sleep(1)
 
     def run(self):
         """Continuously update the systems and looks for alarms."""

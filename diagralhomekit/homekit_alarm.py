@@ -110,7 +110,14 @@ class HomekitAlarm(Accessory):
     @Accessory.run_at_interval(10)
     def run(self):
         """Check if something has changed."""
+        current_fault = self.sensor_status_fault.get_value()
         fault = 1 if self.alarm_system.status_fault else 0
+        if current_fault != fault:
+            extra = self.alarm_system.extra_log_data(fault=str(fault), action="run")
+            logger.info(
+                f"Fault state {fault} set for {self.alarm_system.name}.",
+                extra=extra,
+            )
         self.sensor_status_fault.set_value(fault)
         self.alarm_status_fault.set_value(fault)
         active_groups = self.alarm_system.get_active_groups()
