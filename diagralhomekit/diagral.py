@@ -572,7 +572,7 @@ class DiagralAccount:
                 logger.exception(e, extra=extra)
                 capture_some_exception(e)
             logger.debug(f"Check emails for system {self.login}", extra=extra)
-            check_interval_in_s = 10
+            check_interval_in_s = 20
             try:
                 self.check_alarm_emails(
                     check_count=20, check_interval_in_s=check_interval_in_s
