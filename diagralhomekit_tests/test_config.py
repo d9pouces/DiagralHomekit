@@ -6,15 +6,12 @@
 """Basic unittests."""
 from unittest.mock import patch
 
-from diagralhomekit.diagral_config import (
-    DiagralAccount,
-    DiagralAlarmSystem,
-    HomekitConfig,
-)
+from diagralhomekit.config import HomekitConfig
+from diagralhomekit.diagral import DiagralAccount
 from diagralhomekit_tests.constants import request_mock
 
 
-@patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
+@patch("diagralhomekit.diagral.DiagralAccount.request", new=request_mock)
 def test_login():
     """Test the login."""
     config = HomekitConfig()
@@ -25,7 +22,7 @@ def test_login():
     account.do_logout()
 
 
-@patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
+@patch("diagralhomekit.diagral.DiagralAccount.request", new=request_mock)
 def test_initialize_systems():
     """Test the initialize_systems function."""
     config = HomekitConfig()
@@ -36,7 +33,7 @@ def test_initialize_systems():
     account.do_logout()
 
 
-@patch("diagralhomekit.diagral_config.DiagralAccount.request", new=request_mock)
+@patch("diagralhomekit.diagral.DiagralAccount.request", new=request_mock)
 def test_get_central_status():
     """Test the get_central_status function."""
     config = HomekitConfig()

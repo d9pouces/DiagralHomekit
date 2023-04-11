@@ -19,6 +19,6 @@ jobs:
       with:
         node-version: '18'
         check-latest: true
-    - run: python3 -m pip install -U pip pytest poetry
-    - run: poetry install
-    - run: pytest -v
+    - run: python3 -m pip install -U pip poetry
+    - run: poetry install --all-extras
+    - run: poetry run pytest -v
