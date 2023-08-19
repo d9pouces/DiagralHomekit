@@ -15,7 +15,7 @@ from pyhap.accessory import Accessory
 from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
-from diagralhomekit.utils import RegexValidator, capture_some_exception, str_or_none
+from diagralhomekit.utils import RegexValidator, str_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -42,25 +42,36 @@ class PlexActivitySensor(Accessory):
         self.selected_player_address = player_address
         self.plex_account: PlexAccount = account
         aid = hash(str(player_name))
+        self.player_name = player_name
         super().__init__(driver, player_name, aid=aid)
-        info_service = self.get_service("AccessoryInformation")
-        server_info = account.get_server_info()
-        for char_name, value in (
-            ("Identify", False),
-            ("Manufacturer", "Plex.tv"),
-            ("Model", "Plex"),
-            ("Name", f"{player_name}"),
-            ("SerialNumber", server_info["host"]),
-            ("FirmwareRevision", server_info["version"]),
-        ):
-            characteristic = info_service.get_characteristic(char_name)
-            characteristic.set_value(value)
 
         service = self.add_preload_service("OccupancySensor", chars=["StatusFault"])
         self.occupancy_detected = service.get_characteristic("OccupancyDetected")
         self.status_fault = service.get_characteristic("StatusFault")
         self.is_active = False
         self.previous_state = False
+        self.is_loaded = False
+
+    def set_characteristics(self):
+        """Fetch Plex info."""
+        if self.is_loaded:
+            return
+        try:
+            info_service = self.get_service("AccessoryInformation")
+            server_info = self.plex_account.get_server_info()
+            for char_name, value in (
+                ("Identify", False),
+                ("Manufacturer", "Plex.tv"),
+                ("Model", "Plex"),
+                ("Name", f"{self.player_name}"),
+                ("SerialNumber", server_info["host"]),
+                ("FirmwareRevision", server_info["version"]),
+            ):
+                characteristic = info_service.get_characteristic(char_name)
+                characteristic.set_value(value)
+            self.is_loaded = True
+        except Exception as e:
+            logger.exception(e)
 
 
 class PlexAccount:
@@ -137,6 +148,7 @@ class PlexAccount:
                 elif player["address"] == sensor.selected_player_address:
                     sensor.is_active = True
         for sensor in self.plex_sensors:
+            sensor.set_characteristics()
             sensor.occupancy_detected.set_value(1 if sensor.is_active else 0)
             if sensor.is_active != sensor.previous_state:
                 logger.info(
