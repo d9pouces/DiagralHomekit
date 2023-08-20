@@ -520,7 +520,10 @@ class DiagralAccount:
         )
 
         for system in self.alarm_systems.values():
-            if line.endswith(system.internal_name + " : Alarme"):
+            name = system.internal_name
+            if name.startswith("* "):
+                name = name[2:]
+            if line.endswith(name + " : Alarme"):
                 logger.debug(
                     f"Alarm triggered for {system.name}.",
                     extra=self.extra_log_data(action="imap", detail="alarm"),
