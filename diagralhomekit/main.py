@@ -9,6 +9,7 @@ import logging
 import os
 import pathlib
 import signal
+import socket
 import sys
 import urllib.parse
 from multiprocessing import Queue
@@ -75,6 +76,10 @@ def main():
     listen_port = args.port
 
     if args.loki_url:
+        try:
+            hostname = socket.gethostname()
+        except socket.gaierror:
+            hostname = "localhost"
         emitter.LokiEmitter.level_tag = "level"
         parsed_url = urllib.parse.urlparse(args.loki_url)
         url = f"{parsed_url.scheme}://{parsed_url.hostname}"
@@ -86,7 +91,11 @@ def main():
         handler = LokiQueueHandler(
             Queue(-1),
             url=url,
-            tags={"application": "diagralhomekit"},
+            tags={
+                "application": "diagralhomekit",
+                "log_source": "diagralhomekit",
+                "hostname": hostname,
+            },
             auth=(parsed_url.username or "", parsed_url.password or ""),
             version="1",
         )
