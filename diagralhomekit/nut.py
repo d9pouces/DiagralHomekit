@@ -113,7 +113,10 @@ class UPSMonitoringPlugin(HomekitPlugin):
 
         for ups_name in self.ups_names:
             ups_verbose_name = available_upses.get(ups_name)
-            ups_data = client.list_vars(ups_name)
-            sensor = UPSSensor(bridge.driver, ups_name, ups_verbose_name, ups_data)
-            self.sensors.append(sensor)
-            bridge.add_accessory(sensor)
+            try:
+                ups_data = client.list_vars(ups_name)
+                sensor = UPSSensor(bridge.driver, ups_name, ups_verbose_name, ups_data)
+                self.sensors.append(sensor)
+                bridge.add_accessory(sensor)
+            except PyNUTError as e:
+                logger.exception(e)
