@@ -4,10 +4,11 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Define a generic alarm system."""
-import logging
 from typing import Set
 
-logger = logging.getLogger(__name__)
+import systemlogger
+
+logger = systemlogger.getLogger(__name__)
 
 
 class AlarmSystem:

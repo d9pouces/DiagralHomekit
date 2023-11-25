@@ -4,12 +4,12 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Add weather sensor that takes data from the MeteoFrance website."""
-import logging
 import time
 from configparser import ConfigParser
 from multiprocessing.pool import ThreadPool
 from typing import Dict, List
 
+import systemlogger
 from meteofrance_api import MeteoFranceClient
 from meteofrance_api.model import Place
 
@@ -21,7 +21,7 @@ from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class MeteoFranceSensor(Accessory):

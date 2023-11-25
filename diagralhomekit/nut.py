@@ -4,10 +4,10 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """UPS sensor fetching data from the local NUT client."""
-import logging
 from configparser import ConfigParser
 from typing import List
 
+import systemlogger
 from nut2 import PyNUTClient, PyNUTError
 
 # noinspection PyPackageRequirements
@@ -18,7 +18,7 @@ from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class UPSSensor(Accessory):

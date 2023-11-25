@@ -5,16 +5,17 @@
 # ##############################################################################
 """Global configuration for Homekit devices."""
 import configparser
-import logging
 import pathlib
 import re
+
+import systemlogger
 
 from diagralhomekit.http_plugin import HttpMonitoringPlugin
 from diagralhomekit.meteofrance import MeteoFrancePlugin
 from diagralhomekit.nut import UPSMonitoringPlugin
 from diagralhomekit.plex import PlexHomekitPlugin
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class HomekitConfig:

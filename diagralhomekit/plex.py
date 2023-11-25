@@ -4,20 +4,20 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """Plex plugin, to add a OccupancySensor for each player."""
-import logging
 import time
 from configparser import ConfigParser
 from multiprocessing.pool import ThreadPool
 from typing import Dict, List, Optional, Tuple
 
 import requests
+import systemlogger
 from pyhap.accessory import Accessory
 from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import RegexValidator, str_or_none
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class PlexActivitySensor(Accessory):

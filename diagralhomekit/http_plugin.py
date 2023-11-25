@@ -5,21 +5,19 @@
 # ##############################################################################
 """Monitor HTTP endpoints."""
 import datetime
-import hashlib
-import logging
 import time
 from configparser import ConfigParser
-from multiprocessing.pool import ThreadPool
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import requests
+import systemlogger
 from pyhap.accessory import Accessory
-from pyhap.const import CATEGORY_AIR_PURIFIER, CATEGORY_SENSOR
+from pyhap.const import CATEGORY_AIR_PURIFIER
 
 from diagralhomekit.plugin import HomekitPlugin
-from diagralhomekit.utils import RegexValidator, capture_some_exception, str_or_none
+from diagralhomekit.utils import capture_some_exception
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class SupervisionSensor(Accessory):

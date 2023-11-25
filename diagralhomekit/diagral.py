@@ -9,7 +9,6 @@ import datetime
 import email.header
 import imaplib
 import io
-import logging
 import re
 import time
 from multiprocessing.pool import ThreadPool
@@ -17,6 +16,7 @@ from threading import Lock
 from typing import Dict, Optional, Set, Tuple
 
 import requests
+import systemlogger
 from sentry_sdk import capture_exception
 
 from diagralhomekit.alarm_system import AlarmSystem
@@ -30,7 +30,7 @@ from diagralhomekit.utils import (
     slugify,
 )
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class DiagralAlarmSystem(AlarmSystem):
@@ -342,10 +342,13 @@ class DiagralAccount:
         )
         if self.config.verbosity >= 4:
             logger.debug(
-                f"{url}: {r.status_code}", self.extra_log_data(action="api-request")
+                f"{url}: {r.status_code}",
+                extra=self.extra_log_data(action="api-request"),
             )
             if r.status_code != 500 and self.config.verbosity >= 5:
-                logger.debug(f"{r.text}", self.extra_log_data(action="api-request"))
+                logger.debug(
+                    f"{r.text}", extra=self.extra_log_data(action="api-request")
+                )
         if self.show_mockup_requests:
             try:
                 json_out = r.json()

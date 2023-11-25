@@ -7,6 +7,8 @@
 import logging
 from threading import Thread
 
+import systemlogger
+
 # noinspection PyPackageRequirements
 from pyhap.accessory import Accessory
 
@@ -19,7 +21,7 @@ from pyhap.const import CATEGORY_ALARM_SYSTEM
 from diagralhomekit.alarm_system import AlarmSystem
 from diagralhomekit.utils import BASE_AID, capture_some_exception
 
-logger = logging.getLogger(__name__)
+logger = systemlogger.getLogger(__name__)
 
 
 class HomekitAlarm(Accessory):
