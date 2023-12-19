@@ -8,7 +8,7 @@ description = "Apple HomeKit integration for Diagral alarm systems"
 license = "CeCILL-B"
 name = "diagralhomekit"
 readme = "README.md"
-version = "0.9.10"
+version = "0.9.12"
 
 [tool.poetry.dependencies]
 HAP-python = "^4.6.0"

@@ -8,6 +8,7 @@ import argparse
 import os
 import pathlib
 import signal
+import time
 
 import systemlogger
 
@@ -55,11 +56,19 @@ def main():
         print("EOF")
         return
     listen_port = args.port
-    run_daemons(
-        config_dir,
-        listen_port,
-        verbosity=args.verbosity,
-    )
+    continue_loop = True
+    while continue_loop:
+        try:
+            run_daemons(
+                config_dir,
+                listen_port,
+                verbosity=args.verbosity,
+            )
+        except KeyboardInterrupt:
+            continue_loop = False
+        except Exception as e:
+            logger.exception(e)
+            time.sleep(60)
 
 
 def run_daemons(config_dir, listen_port, verbosity: int = 1):
@@ -77,14 +86,10 @@ def run_daemons(config_dir, listen_port, verbosity: int = 1):
     bridge = Bridge(driver, "Diagral e-One")
     config = HomekitConfig()
     config.verbosity = verbosity
-    try:
-        config.load_config(config_file)
-        config.load_accessories(bridge)
-        driver.add_accessory(accessory=bridge)
-        signal.signal(signal.SIGTERM, driver.signal_handler)
-        config.run_all()
-        driver.start()
-    except Exception as e:
-        logger.exception(e)
-        raise e
+    config.load_config(config_file)
+    config.load_accessories(bridge)
+    driver.add_accessory(accessory=bridge)
+    signal.signal(signal.SIGTERM, driver.signal_handler)
+    config.run_all()
+    driver.start()
     config.stop_all()
