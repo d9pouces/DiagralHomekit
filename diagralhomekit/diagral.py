@@ -4,6 +4,7 @@
 #  Please check the LICENSE file for sharing or distribution permissions.      #
 # ##############################################################################
 """A Diagral config."""
+
 import configparser
 import datetime
 import email.header
@@ -578,7 +579,7 @@ class DiagralAccount:
                 logger.exception(e, extra=extra)
                 capture_some_exception(e)
             logger.debug(f"Check emails for system {self.login}", extra=extra)
-            check_interval_in_s = 20
+            check_interval_in_s = 60
             try:
                 self.check_alarm_emails(
                     check_count=20, check_interval_in_s=check_interval_in_s
