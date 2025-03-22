@@ -21,7 +21,7 @@ from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 class MeteoFranceSensor(Accessory):
@@ -108,22 +108,28 @@ class MeteoFranceLocation:
         client = MeteoFranceClient()
         my_place_weather_forecast = client.get_forecast_for_place(self.place)
         data = my_place_weather_forecast.daily_forecast[0]
+        prometheus_values = []
+        tags = {"application_fqdn": 'meteofrance', "application": "homekit", "location": self.place.name}
         for char_name, sensor in self.sensors.items():
             if char_name == "temperature_max":
                 sensor.service_char.set_value(data["T"]["max"])
+                prometheus_values.append(("homekit_temperature_max", data["T"]["max"], tags))
             elif char_name == "temperature_min":
                 sensor.service_char.set_value(data["T"]["min"])
+                prometheus_values.append(("homekit_temperature_min", data["T"]["min"], tags))
             elif char_name == "humidity_min":
                 sensor.service_char.set_value(data["humidity"]["max"])
+                prometheus_values.append(("homekit_humidity_max", data["humidity"]["max"], tags))
             elif char_name == "humidity_max":
                 sensor.service_char.set_value(data["humidity"]["min"])
+                prometheus_values.append(("homekit_humidity_min", data["humidity"]["min"], tags))
             elif char_name == "rain_forecast":
                 forecast = client.get_rain(self.place.latitude, self.place.longitude)
-                if forecast.next_rain_date_locale():
-                    sensor.service_char.set_value(1)
-                else:
-                    sensor.service_char.set_value(0)
+                value = 1 if bool(forecast.next_rain_date_locale()) else 0
+                sensor.service_char.set_value(value)
+                prometheus_values.append(("homekit_rain_forecast", value, tags))
             sensor.status_fault.set_value(0)
+        self.config.prometheus_write(prometheus_values)
 
 
 class MeteoFrancePlugin(HomekitPlugin):
@@ -175,6 +181,7 @@ class MeteoFrancePlugin(HomekitPlugin):
                 extra=location.extra_log_data(),
             )
             self.locations.append(location)
+        super().load_config(parser, section)
         return config_errors
 
     def run_all(self):
@@ -196,3 +203,13 @@ class MeteoFrancePlugin(HomekitPlugin):
                 sensor = MeteoFranceSensor(bridge.driver, location.place, char_name)
                 location.sensors[char_name] = sensor
                 bridge.add_accessory(sensor)
+
+    @property
+    def prometheus_metrics_type(self):
+        """Return the type of Prometheus metrics."""
+        return {"homekit_temperature_max": "gauge",
+                "homekit_temperature_min": "gauge",
+                "homekit_humidity_min": "gauge",
+                "homekit_humidity_max": "gauge",
+                "homekit_rain_forecast": "gauge",
+                }

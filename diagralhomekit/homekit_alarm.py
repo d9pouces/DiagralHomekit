@@ -19,9 +19,10 @@ from pyhap.accessory_driver import AccessoryDriver
 from pyhap.const import CATEGORY_ALARM_SYSTEM
 
 from diagralhomekit.alarm_system import AlarmSystem
+from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import BASE_AID, capture_some_exception
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 class HomekitAlarm(Accessory):
@@ -41,10 +42,10 @@ class HomekitAlarm(Accessory):
         STATE_ALARM_TRIGGERED: "alarm triggered",
     }
 
-    def __init__(self, system: AlarmSystem, driver: AccessoryDriver):
+    def __init__(self, plugin: HomekitPlugin, system: AlarmSystem, driver: AccessoryDriver):
         """init function."""
         super().__init__(driver, system.name, aid=system.identifier + BASE_AID)
-
+        self.plugin = plugin
         self.info_service = self.get_service("AccessoryInformation")
         self.info_service.get_characteristic("Identify").set_value(True)
         self.info_service.get_characteristic("Manufacturer").set_value("Diagral")
@@ -115,6 +116,9 @@ class HomekitAlarm(Accessory):
     @Accessory.run_at_interval(10)
     def run(self):
         """Check if something has changed."""
+        tags = {"application_fqdn": self.alarm_system.name, "application": "homekit"}
+        prometheus_values = []
+
         current_fault = self.sensor_status_fault.get_value()
         fault = 1 if self.alarm_system.status_fault else 0
         if current_fault != fault:
@@ -146,6 +150,9 @@ class HomekitAlarm(Accessory):
 
         self.sensor_status_active.set_value(state != self.STATE_DISARMED)
         self.sensor_occupancy_detected.set_value(state == self.STATE_ALARM_TRIGGERED)
+        triggered = 1 if self.STATE_ALARM_TRIGGERED else 0
+        prometheus_values.append(("homekit_alarm_triggered", triggered, tags))
+
         self.alarm_alarm_type.set_value(1 if state == self.STATE_ALARM_TRIGGERED else 0)
 
         if self.alarm_current_state.get_value() != state:
@@ -182,3 +189,5 @@ class HomekitAlarm(Accessory):
             self.alarm_target_state.set_value(state)
 
         self.alarm_current_state.set_value(state)
+        prometheus_values.append(("homekit_alarm_state", state, tags))
+        self.plugin.prometheus_write(prometheus_values)

@@ -21,7 +21,7 @@ from pyhap.accessory_driver import AccessoryDriver
 from diagralhomekit.config import HomekitConfig
 from diagralhomekit.diagral import DiagralHomekitPlugin
 
-logger = systemlogger.getLogger("diagralhomekit")
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 def main():

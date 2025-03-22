@@ -8,7 +8,22 @@ description = "Apple HomeKit integration for Diagral alarm systems"
 license = "CeCILL-B"
 name = "diagralhomekit"
 readme = "README.md"
-version = "0.9.14"
+version = "0.9.15"
+classifiers = [
+  'Development Status :: 5 - Production/Stable',
+  'License :: OSI Approved :: CEA CNRS Inria Logiciel Libre License, version 2.1 (CeCILL-2.1)',
+  'Operating System :: MacOS :: MacOS X',
+  'Operating System :: POSIX :: BSD',
+  'Operating System :: POSIX :: Linux',
+  'Operating System :: Unix',
+  'Natural Language :: English',
+  'Natural Language :: French',
+  'Programming Language :: Python :: 3 :: Only',
+  'Programming Language :: Python :: 3.9',
+  'Programming Language :: Python :: 3.10',
+  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: 3.12',
+]
 
 [tool.poetry.dependencies]
 HAP-python = "^4.6.0"
@@ -18,7 +33,7 @@ nut2 = "^2.1.1"
 pyqrcode = "^1.2.1"
 python = "^3.9"
 requests = "^2.28.2"
-systemlogger = "^0.1.0"
+systemlogger = "^0.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.0"

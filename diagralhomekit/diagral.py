@@ -31,7 +31,7 @@ from diagralhomekit.utils import (
     slugify,
 )
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "alarm", "application": "homekit"})
 
 
 class DiagralAlarmSystem(AlarmSystem):
@@ -659,13 +659,14 @@ class DiagralHomekitPlugin(HomekitPlugin):
                 f"Configuration for alarm system {system} added.",
                 extra=system.extra_log_data(),
             )
+        super().load_config(parser, section)
         return config_errors
 
     def load_accessories(self, bridge):
         """Add accessories to the Homekit bridge."""
         for account in self.diagral_accounts.values():
             for system in account.alarm_systems.values():
-                accessory = HomekitAlarm(system, bridge.driver)
+                accessory = HomekitAlarm(self, system, bridge.driver)
                 bridge.add_accessory(accessory)
 
     def run_all(self):
@@ -707,3 +708,7 @@ class DiagralHomekitPlugin(HomekitPlugin):
         parser.write(fd)
         account.do_logout()
         return fd.getvalue()
+
+    @property
+    def prometheus_metrics_type(self) -> dict[str, str]:
+        return {"homekit_alarm_state": "gauge", "homekit_alarm_triggered": "gauge"}

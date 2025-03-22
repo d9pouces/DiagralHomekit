@@ -8,7 +8,7 @@ from typing import Set
 
 import systemlogger
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "alarm", "application": "homekit"})
 
 
 class AlarmSystem:

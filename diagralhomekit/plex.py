@@ -17,7 +17,7 @@ from pyhap.const import CATEGORY_SENSOR
 from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import RegexValidator, str_or_none
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 class PlexActivitySensor(Accessory):
@@ -208,6 +208,7 @@ class PlexHomekitPlugin(HomekitPlugin):
                 f"Configuration for Plex player {kwargs} added.",
                 extra=account.extra_log_data(),
             )
+        super().load_config(parser, section)
         return config_errors
 
     def run_all(self):

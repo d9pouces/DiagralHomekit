@@ -6,6 +6,7 @@
 """Monitor HTTP endpoints."""
 import datetime
 import time
+import urllib.parse
 from configparser import ConfigParser
 from typing import List, Tuple
 
@@ -17,7 +18,14 @@ from pyhap.const import CATEGORY_AIR_PURIFIER
 from diagralhomekit.plugin import HomekitPlugin
 from diagralhomekit.utils import capture_some_exception
 
-logger = systemlogger.getLogger(__name__)
+QUALITY_UNKNOWN = 0
+QUALITY_EXCELLENT = 1
+QUALITY_GOOD = 2
+QUALITY_FAIR = 3
+QUALITY_INFERIOR = 4
+QUALITY_POOR = 5
+
+logger = systemlogger.getLogger(__name__, extra_tags={"application": "homekit"})
 
 
 class SupervisionSensor(Accessory):
@@ -25,8 +33,9 @@ class SupervisionSensor(Accessory):
 
     category = CATEGORY_AIR_PURIFIER
 
-    def __init__(self, driver, server_url, name):
+    def __init__(self, plugin: HomekitPlugin, driver, server_url, name):
         """init function."""
+        self.plugin = plugin
         self.server_url = server_url
         aid = hash(server_url)
         super().__init__(driver, name, aid=aid)
@@ -48,28 +57,44 @@ class SupervisionSensor(Accessory):
     def run(self):
         """Run at regular interval for monitoring the given URL."""
         # noinspection PyBroadException
+        prometheus_values = []
+        start = time.time()
+        parsed_url = urllib.parse.urlparse(self.server_url)
         try:
-            start = time.time()
             r = requests.get(self.server_url, allow_redirects=False)
-            end = time.time()
-            value = 5
-            if r.status_code in {200, 401, 301, 302}:
-                delta = end - start
-                if delta < 1.0:
-                    value = 1
-                elif delta < 3.0:
-                    value = 2
-                if delta < 5.0:
-                    value = 3
+            ping = time.time() - start
+            homekit_state = QUALITY_UNKNOWN
+            status_code = r.status_code
+            if status_code in {200, 401, 301, 302}:
+                if ping < 1.0:
+                    homekit_state = QUALITY_EXCELLENT
+                elif ping < 3.0:
+                    homekit_state = QUALITY_GOOD
+                elif ping < 5.0:
+                    homekit_state = QUALITY_FAIR
                 else:
-                    value = 4
+                    homekit_state = QUALITY_INFERIOR
         except Exception as e:
-            value = 5
+            ping = time.time() - start
+            homekit_state = QUALITY_POOR
             capture_some_exception(e)
-        self.current_quality.set_value(value)
+            status_code = 0
+        prometheus_values.append((
+            "homekit_http_monitoring_status", status_code,
+            {"application_fqdn": parsed_url.hostname, "application": "homekit"},
+        ))
+        prometheus_values.append((
+            "homekit_http_monitoring_state", homekit_state,
+            {"application_fqdn": parsed_url.hostname, "application": "homekit"},
+        ))
+        prometheus_values.append((
+            "homekit_http_monitoring_ping", ping,
+            {"application_fqdn": parsed_url.hostname, "application": "homekit"},
+        ))
+        self.current_quality.set_value(homekit_state)
         logger.debug(
-            f"monitoring of {self.server_url}: {value}",
-            extra={"tags": {"type": "internet"}},
+            f"monitoring of {self.server_url}: {homekit_state} ping={ping} status={status_code})",
+            extra={"tags": {"type": "internet", "application_fqdn": parsed_url.hostname, "homekit_state": "homekit_state"}},
         )
 
 
@@ -107,11 +132,20 @@ class HttpMonitoringPlugin(HomekitPlugin):
             f"Configuration for monitoring {name} {server_url} added.",
             extra={"tags": {"type": "internet"}},
         )
+        super().load_config(parser, section)
         return config_errors
 
     def load_accessories(self, bridge):
         """Add accessories to the Homekit bridge."""
         for data in self.urls:
-            sensor = SupervisionSensor(bridge.driver, *data)
+            sensor = SupervisionSensor(self, bridge.driver, *data)
             self.sensors.append(sensor)
             bridge.add_accessory(sensor)
+
+    @property
+    def prometheus_metrics_type(self):
+        """Return the type of Prometheus metrics."""
+        return {"homekit_http_monitoring_status": "gauge",
+                "homekit_http_monitoring_state": "gauge",
+                "homekit_http_monitoring_ping": "gauge",
+                }

@@ -15,7 +15,7 @@ from diagralhomekit.meteofrance import MeteoFrancePlugin
 from diagralhomekit.nut import UPSMonitoringPlugin
 from diagralhomekit.plex import PlexHomekitPlugin
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 class HomekitConfig:

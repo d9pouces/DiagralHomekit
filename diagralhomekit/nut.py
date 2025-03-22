@@ -18,7 +18,7 @@ from pyhap.const import CATEGORY_SENSOR
 
 from diagralhomekit.plugin import HomekitPlugin
 
-logger = systemlogger.getLogger(__name__)
+logger = systemlogger.getLogger(__name__, extra_tags={"application_fqdn": "homekit", "application": "homekit"})
 
 
 class UPSSensor(Accessory):
@@ -100,6 +100,7 @@ class UPSMonitoringPlugin(HomekitPlugin):
             f"Configuration for monitoring {ups_name} added.",
             extra={"tags": {"type": "internet"}},
         )
+        super().load_config(parser, section)
         return config_errors
 
     def load_accessories(self, bridge):
