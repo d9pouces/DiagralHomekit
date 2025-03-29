@@ -129,7 +129,11 @@ class PlexAccount:
 
     def update_all_sensors(self):
         """Update all Plex sensors."""
-        r = self.get_api_result("status/sessions")
+        try:
+            r = self.get_api_result("status/sessions")
+        except requests.exceptions.ConnectionError as e:
+            logger.warning("Unable to connect to Plex. {e}", extra=self.extra_log_data())
+            return
         sessions = r.get("Metadata", [])
         for sensor in self.plex_sensors:
             sensor.previous_state = sensor.is_active
